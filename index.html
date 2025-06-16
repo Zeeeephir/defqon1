@@ -257,6 +257,7 @@
     <script type="module">
         // Importation des modules Firebase nécessaires via CDN
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        // Seules les méthodes d'authentification anonyme et par jeton personnalisé sont nécessaires
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, onSnapshot, collection, addDoc, updateDoc, query, orderBy, limit, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
@@ -341,7 +342,6 @@
         }
 
         // --- FIRESTORE OPERATIONS ---
-        // These functions will only be called after Firebase is initialized in the window.onload block.
 
         // Fonction pour envoyer le message de localisation (texte) à Firestore
         window.sendLocationMessageEvent = async function() {
@@ -461,7 +461,7 @@
             return formattedValue;
         }
 
-        // Fonction pour enregistrer ou mettre à jour le profil utilisateur
+        // Fonction pour enregistrer/mettre à jour le profil utilisateur (prénom et numéro de téléphone)
         window.saveProfile = async function() {
             if (!db || !currentUserId) {
                 showMessageBox("L'application n'est pas prête ou l'utilisateur n'est pas authentifié.");
@@ -470,11 +470,12 @@
 
             const firstNameInput = document.getElementById('firstNameInput');
             const phoneNumberInput = document.getElementById('phoneNumberInput');
-            const firstName = firstNameInput.value.trim();
-            let phoneNumber = phoneNumberInput.value.replace(/\s/g, '');
 
-            if (!firstName) {
-                showMessageBox("Veuillez saisir votre prénom.");
+            const firstName = firstNameInput.value.trim();
+            const phoneNumber = phoneNumberInput.value.replace(/\s/g, '');
+
+            if (!firstName || !phoneNumber) {
+                showMessageBox("Veuillez saisir votre prénom et votre numéro de téléphone.");
                 return;
             }
             if (!/^\d{10}$/.test(phoneNumber)) {
@@ -483,33 +484,27 @@
             }
 
             try {
+                // Utilise l'ID utilisateur actuel (anonyme) pour le profil
                 const userProfileRef = doc(db, `artifacts/${appId}/public/data/profiles`, currentUserId);
-
-                // Si l'utilisateur a déjà un profil et tente de s'enregistrer avec des données identiques,
-                // ou s'il y a déjà un prénom enregistré, on peut le considérer comme un doublon pour cette session anonyme.
-                if (hasUserProfile && userProfiles[currentUserId]?.firstName === firstName && userProfiles[currentUserId]?.phoneNumber === phoneNumber) {
-                    showMessageBox("Votre profil est déjà enregistré avec ces informations.");
-                    return;
-                }
-
+                
                 await setDoc(userProfileRef, {
                     userId: currentUserId,
                     firstName: firstName,
                     phoneNumber: phoneNumber,
                     lastOnline: Date.now()
-                }, { merge: true });
-                showMessageBox("Votre profil a été enregistré avec succès !");
+                }, { merge: true }); // Utilise merge pour mettre à jour ou créer
 
-                // Mettre à jour l'état et l'UI immédiatement
-                hasUserProfile = true;
-                updateConnectButtonState(); // Mettre à jour le texte du bouton principal
-                renderProfileTab(); // Re-rendre l'onglet pour afficher le profil
+                showMessageBox("Votre profil a été enregistré avec succès !");
+                hasUserProfile = true; // Met à jour le drapeau de profil
+                updateConnectButtonState(); // Met à jour le texte du bouton
+                renderProfileTab(); // Affiche le profil de l'utilisateur
 
             } catch (error) {
                 console.error("Erreur lors de l'enregistrement du profil:", error);
-                showMessageBox("Erreur lors de l'enregistrement de votre profil.");
+                showMessageBox("Erreur lors de l'enregistrement de votre profil. " + error.message);
             }
-        }
+        };
+
 
         // Fonction pour déconnecter l'utilisateur
         window.logout = async function() {
@@ -831,13 +826,14 @@
                     </div>
                 `;
             } else {
+                // Si l'utilisateur n'a pas de profil enregistré, affiche le formulaire d'inscription simplifié
                 tabContentElement.innerHTML = `
-                    <div>
-                        <h2 class="text-3xl font-semibold mb-6 text-center text-red-400">S'enregistrer</h2>
+                    <div class="flex flex-col items-center justify-center p-4">
+                        <h2 class="text-3xl font-semibold mb-6 text-center text-red-400">Enregistrer votre profil</h2>
                         <p class="text-center text-gray-400 mb-4">
-                            Enregistrez votre prénom et numéro de téléphone pour pouvoir utiliser toutes les fonctionnalités (chat, etc.).
+                            Renseignez votre prénom et numéro de téléphone.
                         </p>
-                        <div class="flex flex-col gap-4 mb-6">
+                        <div class="flex flex-col gap-4 mb-6 w-full max-w-md">
                             <input
                                 type="text"
                                 id="firstNameInput"
@@ -854,20 +850,23 @@
                             <button onclick="saveProfile()" class="btn-primary">
                                 Enregistrer le profil
                             </button>
-                        </div>
-                        <div class="text-center text-gray-500 mt-6 text-sm">
-                            Votre ID unique: <span class="font-mono bg-gray-700 rounded px-2 py-1">${currentUserId ? currentUserId : 'Chargement...'}</span>
+                            <p class="text-center text-gray-500 mt-2 text-sm">
+                                Votre ID unique anonyme actuel: <span class="font-mono bg-gray-700 rounded px-2 py-1">${currentUserId ? currentUserId : 'Chargement...'}</span>
+                            </p>
                         </div>
                     </div>
                 `;
-                // Pré-remplir les champs si le profil existe déjà mais n'est pas "complet"
+                 // Pré-remplir les champs si le profil existe déjà mais n'est pas "complet"
+                 // (par exemple, si l'utilisateur est revenu avec un ID anonyme persistant mais n'a pas complété son profil)
                 if (currentUserId && userProfiles[currentUserId]) {
-                    document.getElementById('firstNameInput').value = userProfiles[currentUserId].firstName || '';
-                    const rawPhoneNumber = userProfiles[currentUserId].phoneNumber || '';
-                    document.getElementById('phoneNumberInput').value = window.formatPhoneNumber({ value: rawPhoneNumber });
+                    const firstNameInput = document.getElementById('firstNameInput');
+                    const phoneNumberInput = document.getElementById('phoneNumberInput');
+                    if (firstNameInput) firstNameInput.value = userProfiles[currentUserId].firstName || '';
+                    if (phoneNumberInput) phoneNumberInput.value = window.formatPhoneNumber({ value: userProfiles[currentUserId].phoneNumber || '' });
                 }
             }
         }
+
 
         // Mettre à jour l'affichage du compteur d'utilisateurs en ligne
         function updateOnlineUsersCountDisplay() {
