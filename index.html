@@ -6,6 +6,8 @@
     <title>DEFQON 1 Companion - Avec Firestore</title>
     <!-- Chargement de Tailwind CSS via CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chargement de la bibliothèque QRious pour les QR Codes -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
     <style>
         /* Importation de la police Inter */
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
@@ -236,6 +238,10 @@
         <button id="tabConnect" class="px-4 py-2 rounded-md bg-red-700 text-white font-semibold transition-all shadow-lg hover:bg-red-800 hover:scale-105 active:scale-95 transform" onclick="setActiveTab('connect')">
             Se connecter
         </button>
+        <!-- Nouveau bouton "NoisyNeighbors" -->
+        <button id="tabNoisyNeighbors" class="px-4 py-2 rounded-md bg-purple-700 text-white font-semibold transition-all shadow-lg hover:bg-purple-800 hover:scale-105 active:scale-95 transform" onclick="setActiveTab('noisyNeighbors')">
+            NoisyNeighbors
+        </button>
     </div>
 
     <!-- Contenu des onglets -->
@@ -297,6 +303,10 @@
         const DEFQON_START_DATE = new Date('2025-06-26T12:00:00'); // June 26, 2025, 12:00 PM
         const DEFQON_END_DATE = new Date('2025-06-29T23:59:59'); // June 29, 2025, 11:59 PM (for 4 days until Sunday evening)
         let countdownInterval = null;
+
+        // --- URLS POUR LES QR CODES ---
+        const INSTAGRAM_URL = "https://www.instagram.com/noisyneighborsmusic?igsh=MW5rZzJ4ajBpdDVvMA%3D%3D&utm_source=qr";
+        const SOUNDCLOUD_URL = "https://soundcloud.com/noisyneighborsmusics?utm_source=clipboard&utm_medium=text&utm_campaign=social_sharing";
 
         // --- UTILITY FUNCTIONS ---
 
@@ -448,7 +458,8 @@
                     try {
                         const userProfileRef = doc(db, `artifacts/${appId}/public/data/profiles`, currentUserId);
                         await setDoc(userProfileRef, { lastOnline: Date.now() }, { merge: true }); // Only update lastOnline
-                    } catch (error) {
+                    }
+                     catch (error) {
                         console.error("Erreur lors de la mise à jour du statut en ligne:", error);
                     }
                 }
@@ -804,6 +815,79 @@
             }
         }
 
+        // Rendu du contenu de l'onglet "NoisyNeighbors"
+        function renderNoisyNeighborsTab() {
+            document.getElementById('tabContent').innerHTML = `
+                <div class="flex flex-col items-center justify-center p-4">
+                    <h2 class="text-3xl font-semibold mb-6 text-center text-red-400">NoisyNeighbors</h2>
+                    <p class="text-center text-gray-400 mb-6">Partagez notre musique et connectez-vous !</p>
+
+                    <div class="flex flex-col sm:flex-row gap-4 mb-8">
+                        <button onclick="generateAndDisplayQRCode('instagram')" class="btn-primary bg-pink-600 hover:bg-pink-700">
+                            Partager Instagram
+                        </button>
+                        <button onclick="generateAndDisplayQRCode('soundcloud')" class="btn-primary bg-orange-600 hover:bg-orange-700">
+                            Partager SoundCloud
+                        </button>
+                    </div>
+
+                    <div id="qrCodeContainer" class="flex flex-col items-center justify-center p-4 bg-gray-800 rounded-lg shadow-lg" style="min-height: 250px; min-width: 250px;">
+                        <p class="text-gray-400">Cliquez sur un bouton pour générer le QR Code.</p>
+                    </div>
+
+                    <button onclick="setActiveTab('accueil')" class="btn-primary mt-8">
+                        Retour à l'Accueil
+                    </button>
+                </div>
+            `;
+        }
+
+        // Fonction pour générer et afficher le QR Code
+        window.generateAndDisplayQRCode = function(platform) {
+            const qrCodeContainer = document.getElementById('qrCodeContainer');
+            qrCodeContainer.innerHTML = ''; // Effacer le contenu précédent (texte ou QR Code)
+
+            let urlToEncode = '';
+            let label = '';
+            if (platform === 'instagram') {
+                urlToEncode = INSTAGRAM_URL;
+                label = 'Instagram';
+            } else if (platform === 'soundcloud') {
+                urlToEncode = SOUNDCLOUD_URL;
+                label = 'SoundCloud';
+            }
+
+            if (urlToEncode) {
+                const canvas = document.createElement('canvas');
+                canvas.id = 'qrCodeCanvas';
+                // La taille du canvas doit être suffisamment grande pour le QR code
+                canvas.width = 200; 
+                canvas.height = 200; 
+
+                qrCodeContainer.appendChild(canvas);
+
+                // Crée le QR Code en utilisant la bibliothèque QRious
+                new QRious({
+                    element: canvas,
+                    value: urlToEncode,
+                    size: 200, // Taille réelle du QR code rendu sur le canvas
+                    padding: 20,
+                    foreground: '#dc2626', // Couleur rouge pour le QR code
+                    background: '#000000', // Fond noir
+                });
+
+                // Ajoute une étiquette sous le QR code
+                const qrLabel = document.createElement('p');
+                qrLabel.className = 'text-gray-400 mt-2';
+                qrLabel.textContent = `QR Code pour ${label}`;
+                qrCodeContainer.appendChild(qrLabel);
+
+            } else {
+                qrCodeContainer.innerHTML = '<p class="text-gray-400">URL non trouvée pour le QR Code.</p>';
+            }
+        };
+
+
         // Update the display of the online users count
         function updateOnlineUsersCountDisplay() {
             const displayElement = document.getElementById('onlineUsersCount');
@@ -889,6 +973,13 @@
                 tabConnectButton.classList.remove('active');
                 tabConnectButton.classList.remove('scale-105');
             }
+            // Pour le nouveau bouton NoisyNeighbors (séparé aussi)
+            const tabNoisyNeighborsButton = document.getElementById('tabNoisyNeighbors');
+            if (tabNoisyNeighborsButton) {
+                tabNoisyNeighborsButton.classList.remove('active');
+                tabNoisyNeighborsButton.classList.remove('scale-105');
+            }
+
 
             // Assurez-vous que l'élément existe avant de tenter d'ajouter la classe 'active'
             const targetButton = document.getElementById('tab' + tabName.charAt(0).toUpperCase() + tabName.slice(1));
@@ -896,6 +987,8 @@
                 targetButton.classList.add('active');
             } else if (tabName === 'connect' && tabConnectButton) {
                 tabConnectButton.classList.add('active');
+            } else if (tabName === 'noisyNeighbors' && tabNoisyNeighborsButton) {
+                tabNoisyNeighborsButton.classList.add('active');
             }
 
 
@@ -912,6 +1005,9 @@
                     break;
                 case 'connect':
                     renderConnectTab();
+                    break;
+                case 'noisyNeighbors':
+                    renderNoisyNeighborsTab();
                     break;
                 default:
                     renderAccueilTab(); // Revenir à l'onglet par défaut si un onglet invalide est demandé
