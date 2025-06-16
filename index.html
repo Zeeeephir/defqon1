@@ -19,8 +19,12 @@
             @apply px-4 py-2 rounded-md transition-all duration-300 ease-in-out transform; /* Ajout de transform pour les animations */
         }
         .tab-button.active {
-            @apply bg-red-600 text-white shadow-lg scale-105; /* Rouge pour l'onglet actif avec léger agrandissement */
-            box-shadow: 0 0 25px rgba(220, 38, 38, 0.8); /* Ombre rouge plus prononcée */
+            /* Changement: fond transparent, bordure inférieure rouge subtile, texte rougeoyant */
+            @apply bg-transparent text-red-400 scale-105; /* Texte plus clair pour la lueur */
+            border: none; /* Pas de bordure pleine */
+            border-bottom: 2px solid #dc2626; /* Bordure inférieure rouge */
+            box-shadow: none; /* Pas d'ombre de boîte pour éviter l'effet rectangulaire */
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.5); /* Lueur sur le texte */
         }
         .tab-button:not(.active) {
             @apply bg-gray-800 text-gray-300 hover:bg-gray-700 hover:scale-105 active:scale-95; /* Gris foncé, survol et clic */
@@ -170,7 +174,7 @@
         }
         .countdown-box .countdown-text {
             /* Utilisation d'une taille de police ajustée pour remplir l'espace sans déborder */
-            font-size: 1.8rem; /* Taille de base ajustée */
+            font-size: 1.4rem; /* Taille de base ajustée */
             @apply text-white font-bold;
             text-shadow: 0 0 20px rgba(255, 255, 255, 0.9), 0 0 30px rgba(255, 0, 0, 0.7);
             white-space: nowrap; /* Empêche le retour à la ligne */
@@ -187,17 +191,17 @@
         /* Ajustements responsifs pour la taille de la police du minuteur */
         @media (min-width: 640px) { /* sm */
             .countdown-box .countdown-text {
-                font-size: 2.2rem;
+                font-size: 1.8rem;
             }
         }
         @media (min-width: 768px) { /* md */
             .countdown-box .countdown-text {
-                font-size: 2.8rem;
+                font-size: 2.2rem;
             }
         }
         @media (min-width: 1024px) { /* lg */
             .countdown-box .countdown-text {
-                font-size: 3.5rem;
+                font-size: 2.6rem;
             }
         }
 
@@ -214,28 +218,18 @@
 <body class="min-h-screen p-4 sm:p-6 lg:p-8 flex flex-col items-center">
     <h1 class="text-4xl sm:text-5xl font-bold text-center mb-8 text-red-500">DEFQON 1 Companion</h1>
 
-    <p class="text-center text-gray-400 mb-6">
-        <span id="onlineUsersCount" class="ml-4 px-3 py-1 rounded-full bg-red-500 text-white text-sm font-semibold">
-            En ligne: 0
-        </span>
-    </p>
-
-    <!-- Compte à rebours du festival -->
-    <div id="countdownDisplay" class="countdown-box">
-        <div class="countdown-text">Chargement...</div>
-        <!-- Le label sera vide si le compte à rebours est actif -->
-        <div class="countdown-label"></div>
-    </div>
-
     <!-- Conteneur des onglets et du bouton de connexion -->
     <div class="flex flex-col sm:flex-row items-center justify-center mb-8 gap-4">
         <!-- Onglets de navigation -->
         <div class="flex space-x-2 sm:space-x-4 p-1 bg-gray-800 rounded-lg shadow-inner">
-            <button id="tabSeRetrouver" class="tab-button active" onclick="setActiveTab('seRetrouver')">
+            <button id="tabAccueil" class="tab-button" onclick="setActiveTab('accueil')">
+                Accueil
+            </button>
+            <button id="tabSeRetrouver" class="tab-button" onclick="setActiveTab('seRetrouver')">
                 Se retrouver
             </button>
-            <button id="tabDefis" class="tab-button" onclick="setActiveTab('defis')">
-                Défis
+            <button id="tabObjectifs" class="tab-button" onclick="setActiveTab('objectifs')">
+                Objectifs
             </button>
         </div>
         <!-- Bouton "Se connecter" séparé -->
@@ -283,13 +277,13 @@
             // l'utilisateur DOIT remplir cette configuration manuellement.
             console.warn("Attention: __firebase_config n'est pas défini. Si vous exécutez cette application en dehors de l'environnement Canvas, veuillez remplacer 'YOUR_FIREBASE_CONFIG_HERE' par votre configuration Firebase réelle.");
             firebaseConfig = {
-                apiKey: "AIzaSyAb5BBuf3qfFFMpXTwIp3XjBCf_VIIBsWo",
-                authDomain: "defqon1-9f38d.firebaseapp.com",
-                projectId: "defqon1-9f38d",
-                storageBucket: "defqon1-9f38d.firebasestorage.app",
-                messagingSenderId: "123287772879",
-                appId: "1:123287772879:web:a76c3c0de2a47b1ac5a1ba",
-                measurementId: "G-40W1R1M7CC"
+                apiKey: "YOUR_FIREBASE_API_KEY",
+                authDomain: "YOUR_FIREBASE_AUTH_DOMAIN",
+                projectId: "YOUR_FIREBASE_PROJECT_ID",
+                storageBucket: "YOUR_FIREBASE_STORAGE_BUCKET",
+                messagingSenderId: "YOUR_FIREBASE_MESSAGING_SENDER_ID",
+                appId: "YOUR_FIREBASE_APP_ID",
+                // measurementId: "YOUR_FIREBASE_MEASUREMENT_ID" // Optionnel, si vous utilisez Google Analytics
                 };
         }
 
@@ -365,9 +359,9 @@
                 isAuthReady = true; // Mark authentication as ready
                 // Once authentication is ready, we can start listening to data
                 setupFirestoreListeners();
-                // Display the default tab once authentication and listeners are ready
-                window.setActiveTab('seRetrouver');
-                startCountdown(); // Start the countdown once authentication is ready
+                // Display the default tab ('Accueil') once authentication and listeners are ready
+                window.setActiveTab('accueil');
+                startCountdown(); // Start the countdown globally
             });
 
         } catch (error) {
@@ -377,14 +371,14 @@
             db = null;
             auth = null;
             isAuthReady = true; // Mark as ready even without Firebase to avoid total blocking
-            window.setActiveTab('seRetrouver');
+            window.setActiveTab('accueil'); // Still attempt to show 'Accueil'
         }
 
 
         // --- FIRESTORE OPERATIONS ---
 
         let locationMessages = []; // Local array to store location messages
-        let challenges = []; // Local array to store challenges
+        let challenges = []; // Local array to store challenges (now called objectifs)
         let userProfiles = {}; // Stores user profiles
         let onlineUsersCount = 0; // Counter for online users
 
@@ -409,19 +403,19 @@
                 showMessageBox("Impossible de charger les messages de localisation en temps réel.");
             });
 
-            // Listener for challenges
-            const challengesColRef = collection(db, `artifacts/${appId}/public/data/challenges`);
+            // Listener for challenges (now objectifs)
+            const challengesColRef = collection(db, `artifacts/${appId}/public/data/challenges`); // Collection name remains 'challenges' in Firestore
             onSnapshot(challengesColRef, (snapshot) => {
                 const fetchedChallenges = [];
                 snapshot.forEach(doc => {
                     fetchedChallenges.push({ id: doc.id, ...doc.data() });
                 });
                 challenges = fetchedChallenges; // Update local array
-                updateChallengesDisplay(); // Update display
-                updateChallengeGauges(); // Update challenge gauges
+                updateChallengesDisplay(); // Update display for objectifs
+                updateChallengeGauges(); // Update gauges for objectifs
             }, (error) => {
-                console.error("Erreur lors de l'écoute des défis:", error);
-                showMessageBox("Impossible de charger les défis en temps réel.");
+                console.error("Erreur lors de l'écoute des objectifs:", error);
+                showMessageBox("Impossible de charger les objectifs en temps réel.");
             });
 
             // Listener for user profiles and online presence
@@ -486,7 +480,7 @@
             }
         }
 
-        // Function to add a new challenge to Firestore
+        // Function to add a new challenge (objectif) to Firestore
         window.addChallengeEvent = async function() {
             if (!db || !currentUserId) {
                 showMessageBox("L'application n'est pas prête ou l'utilisateur n'est pas authentifié.");
@@ -506,12 +500,12 @@
                 });
                 inputElement.value = '';
             } catch (error) {
-                console.error("Erreur lors de l'ajout du défi:", error);
-                showMessageBox("Erreur lors de l'ajout du défi.");
+                console.error("Erreur lors de l'ajout de l'objectif:", error);
+                showMessageBox("Erreur lors de l'ajout de l'objectif.");
             }
         }
 
-        // Function to toggle the "completed" status of a challenge in Firestore
+        // Function to toggle the "completed" status of a challenge (objectif) in Firestore
         window.toggleChallengeCompletionEvent = async function(challengeId, newStatus) {
             if (!db || !currentUserId) {
                 showMessageBox("L'application n'est pas prête ou l'utilisateur n'est pas authentifié.");
@@ -525,8 +519,8 @@
                     completedAt: newStatus ? Date.now() : null, // When it was completed
                 });
             } catch (error) {
-                console.error("Erreur lors de la mise à jour du défi:", error);
-                showMessageBox("Erreur lors de la mise à jour du défi.");
+                console.error("Erreur lors de la mise à jour de l'objectif:", error);
+                showMessageBox("Erreur lors de la mise à jour de l'objectif.");
             }
         }
 
@@ -583,6 +577,30 @@
 
         // --- TAB RENDERING AND DISPLAY UPDATES ---
 
+        // Render the content of the "Accueil" tab
+        function renderAccueilTab() {
+            document.getElementById('tabContent').innerHTML = `
+                <div class="flex flex-col items-center justify-center p-4"> <!-- Conteneur centré pour l'onglet Accueil -->
+                    <h2 class="text-3xl font-semibold mb-6 text-center text-red-400">Bienvenue à Defqon 1 !</h2>
+                    
+                    <div class="mb-6 mx-auto"> <!-- Centrer le compteur d'utilisateurs en ligne -->
+                        <span id="onlineUsersCount" class="px-3 py-1 rounded-full bg-red-500 text-white text-sm font-semibold">
+                            En ligne: 0
+                        </span>
+                    </div>
+
+                    <!-- Compte à rebours du festival -->
+                    <div id="countdownDisplay" class="countdown-box mx-auto"> <!-- Utilise mx-auto pour centrer le bloc -->
+                        <div class="countdown-text">Chargement...</div>
+                        <!-- Le label sera vide si le compte à rebours est actif -->
+                        <div class="countdown-label"></div>
+                    </div>
+                </div>
+            `;
+            updateOnlineUsersCountDisplay(); // Update display for online users
+            updateCountdown(); // Update countdown display
+        }
+
         // Render the content of the "Se retrouver" tab
         function renderSeRetrouverTab() {
             document.getElementById('tabContent').innerHTML = `
@@ -607,7 +625,7 @@
             updateLocationMessagesDisplay(); // Update initial display
         }
 
-        // Update the display of location messages
+        // Mettre à jour l'affichage des messages de localisation
         function updateLocationMessagesDisplay() {
             const listElement = document.getElementById('sharedLocationsList');
             if (!listElement) return;
@@ -634,11 +652,11 @@
             }
         }
 
-        // Render the content of the "Défis" tab
-        function renderDefisTab() {
+        // Rendu du contenu de l'onglet "Objectifs" (anciennement "Défis")
+        function renderObjectifsTab() {
             document.getElementById('tabContent').innerHTML = `
                 <div>
-                    <h2 class="text-3xl font-semibold mb-6 text-center text-red-400">Défis du Festival</h2>
+                    <h2 class="text-3xl font-semibold mb-6 text-center text-red-400">Objectifs du Festival</h2>
                     <div id="userGaugesContainer" class="flex justify-around items-end mb-8 flex-wrap gap-6">
                         <!-- Les jauges individuelles seront insérées ici par updateChallengeGauges() -->
                     </div>
@@ -646,7 +664,7 @@
                         <input
                             type="text"
                             id="newChallengeInput"
-                            placeholder="Ajouter un nouveau défi..."
+                            placeholder="Ajouter un nouvel objectif..."
                             class="input-field flex-grow"
                         />
                         <button onclick="addChallengeEvent()" class="btn-primary">
@@ -654,21 +672,21 @@
                         </button>
                     </div>
                     <div id="challengesList" class="scrollable-content">
-                        <!-- Les défis seront injectés ici -->
+                        <!-- Les objectifs seront injectés ici -->
                     </div>
                 </div>
             `;
-            updateChallengesDisplay(); // Update initial display
-            updateChallengeGauges(); // Initialize gauges
+            updateChallengesDisplay(); // Mettre à jour l'affichage initial des objectifs
+            updateChallengeGauges(); // Initialiser les jauges des objectifs
         }
 
-        // Update the display of challenges
+        // Mettre à jour l'affichage des défis (maintenant objectifs)
         function updateChallengesDisplay() {
             const listElement = document.getElementById('challengesList');
             if (!listElement) return;
 
             if (challenges.length === 0) {
-                listElement.innerHTML = `<p class="text-center text-gray-400 italic">Aucun défi ajouté pour l'instant.</p>`;
+                listElement.innerHTML = `<p class="text-center text-gray-400 italic">Aucun objectif ajouté pour l'instant.</p>`;
             } else {
                 listElement.innerHTML = challenges.map(challenge => {
                     const completedByName = challenge.completedBy && userProfiles[challenge.completedBy] ? escapeHTML(userProfiles[challenge.completedBy].firstName) : 'Inconnu';
@@ -692,43 +710,43 @@
             }
         }
 
-        // --- Challenge Gauge Update Functions ---
+        // --- Fonctions de mise à jour des jauges de défis (maintenant objectifs) ---
         function updateChallengeGauges() {
             const gaugesContainer = document.getElementById('userGaugesContainer');
             if (!gaugesContainer) return;
 
-            // Filter profiles to display only those with a first name
+            // Filtrer les profils pour n'afficher que ceux qui ont un prénom
             const identifiableUsers = Object.values(userProfiles).filter(p => p.firstName);
 
             if (identifiableUsers.length === 0) {
-                gaugesContainer.innerHTML = `<p class="text-center text-gray-400 italic">Connectez-vous pour voir la progression des défis des joueurs !</p>`;
+                gaugesContainer.innerHTML = `<p class="text-center text-gray-400 italic">Connectez-vous pour voir la progression des objectifs des joueurs !</p>`;
                 return;
             }
 
-            gaugesContainer.innerHTML = ''; // Clear previous gauges
+            gaugesContainer.innerHTML = ''; // Effacer les jauges précédentes
 
             const usersToDisplay = identifiableUsers.sort((a, b) => {
-                // Sort so that the current user appears first, then others by first name
+                // Tri pour que l'utilisateur actuel apparaisse en premier, puis les autres par prénom
                 if (a.userId === currentUserId) return -1;
                 if (b.userId === currentUserId) return 1;
                 return a.firstName.localeCompare(b.firstName);
-            }).slice(0, 2); // Limit to 2 users for the gauges
+            }).slice(0, 2); // Limiter à 2 utilisateurs pour les jauges
 
-            // For circular gauges
-            const radius = 45; // Circle radius
-            const circumference = 2 * Math.PI * radius; // Circle circumference
+            // Pour les jauges circulaires
+            const radius = 45; // Rayon du cercle
+            const circumference = 2 * Math.PI * radius; // Circonférence du cercle
 
 
             usersToDisplay.forEach(profile => {
                 const userIdToDisplay = profile.userId;
                 const userCompletedChallenges = challenges.filter(c => c.completedBy === userIdToDisplay).length;
                 const totalChallengesExisting = challenges.length;
-                // The percentage is based on challenges completed by this player relative to the total existing challenges.
+                // Le pourcentage est basé sur les défis complétés par ce joueur par rapport au total des défis existants.
                 const completionPercentage = totalChallengesExisting > 0 ? (userCompletedChallenges / totalChallengesExisting) * 100 : 0; // 0.0 to 100.0
 
                 const userName = escapeHTML(profile.firstName);
 
-                // Calculation for the circle
+                // Calcul pour le cercle
                 const strokeDashoffset = circumference - (completionPercentage / 100) * circumference;
 
                 const gaugeHtml = `
@@ -746,7 +764,7 @@
             });
         }
 
-        // Render the content of the "Se connecter" tab
+        // Rendu du contenu de l'onglet "Se connecter"
         function renderConnectTab() {
             document.getElementById('tabContent').innerHTML = `
                 <div>
@@ -860,23 +878,20 @@
         // Function to activate a tab
         // Expose the function to the global scope
         window.setActiveTab = function(tabName) {
-            // Update button classes
+            // Mettre à jour les classes des boutons
             document.querySelectorAll('.tab-button').forEach(button => {
                 button.classList.remove('active');
-                // Explicitly remove the scale-105 class to avoid animation residue
                 button.classList.remove('scale-105');
             });
-            // For the "Se connecter" button (separate)
+            // Pour le bouton Se connecter (séparé)
             const tabConnectButton = document.getElementById('tabConnect');
             if (tabConnectButton) {
                 tabConnectButton.classList.remove('active');
                 tabConnectButton.classList.remove('scale-105');
             }
 
-
-            // Ensure the element exists before attempting to add the 'active' class
+            // Assurez-vous que l'élément existe avant de tenter d'ajouter la classe 'active'
             const targetButton = document.getElementById('tab' + tabName.charAt(0).toUpperCase() + tabName.slice(1));
-            // The 'Se connecter' button is separate, so handled separately
             if (targetButton) {
                 targetButton.classList.add('active');
             } else if (tabName === 'connect' && tabConnectButton) {
@@ -884,26 +899,29 @@
             }
 
 
-            // Display tab content
+            // Afficher le contenu de l'onglet
             switch (tabName) {
+                case 'accueil':
+                    renderAccueilTab();
+                    break;
                 case 'seRetrouver':
                     renderSeRetrouverTab();
                     break;
-                case 'defis':
-                    renderDefisTab();
+                case 'objectifs': // Ancien 'defis'
+                    renderObjectifsTab();
                     break;
                 case 'connect':
                     renderConnectTab();
                     break;
                 default:
-                    renderSeRetrouverTab(); // Revert to default tab if an invalid tab is requested
+                    renderAccueilTab(); // Revenir à l'onglet par défaut si un onglet invalide est demandé
             }
         }
 
-        // --- APPLICATION INITIALIZATION (after DOM loading) ---
-        // `DOMContentLoaded` is now handled within `onAuthStateChanged` to ensure
-        // Firebase authentication is ready before rendering initial content.
-        // Ensure the countdown is stopped when the page is unloaded
+        // --- APPLICATION INITIALIZATION (après chargement du DOM) ---
+        // Le `DOMContentLoaded` est maintenant géré dans `onAuthStateChanged` pour s'assurer
+        // que l'authentification Firebase est prête avant de rendre le contenu initial.
+        // Assurez-vous d'arrêter le compte à rebours lorsque la page est déchargée
         window.addEventListener('beforeunload', () => {
             if (countdownInterval) {
                 clearInterval(countdownInterval);
