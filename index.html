@@ -161,27 +161,52 @@
             100% { box-shadow: 0 0 15px rgba(220, 38, 38, 0.6), inset 0 0 8px rgba(220, 38, 38, 0.3); border-color: #dc2626; }
         }
         .countdown-box {
-            @apply bg-gray-900 border-2 border-red-700 p-8 rounded-xl text-center mb-8 flex items-center justify-center; /* Augmenté le padding pour plus d'espace */
-            animation: subtle-glow 2.5s infinite alternate; /* Appliquer l'animation de pulsation */
-            width: 90%; /* Occupe plus de largeur */
-            max-width: 600px; /* Largeur maximale pour le desktop */
-            height: 120px; /* Hauteur fixe pour une meilleure visibilité */
-            overflow: hidden; /* Cache le débordement potentiel du texte lors de l'adaptation */
+            @apply bg-gray-900 border-2 border-red-700 p-4 rounded-xl text-center mb-8 flex items-center justify-center;
+            animation: subtle-glow 2.5s infinite alternate;
+            width: 90%;
+            max-width: 400px;
+            height: 90px;
+            overflow: hidden;
         }
         .countdown-box .countdown-text {
-            @apply text-white text-4xl sm:text-5xl lg:text-6xl font-bold; /* Plus grand pour l'effet horloge et responsive */
-            text-shadow: 0 0 15px rgba(255, 255, 255, 0.7); /* Effet de lueur plus prononcé sur le texte */
-            white-space: nowrap; /* Empêche le texte de se casser sur plusieurs lignes */
-            overflow: hidden; /* Cache le débordement horizontal */
+            /* Utilisation d'une taille de police ajustée pour remplir l'espace sans déborder */
+            font-size: 2.2rem; /* Taille de base ajustée */
+            @apply text-white font-bold;
+            text-shadow: 0 0 20px rgba(255, 255, 255, 0.9), 0 0 30px rgba(255, 0, 0, 0.7);
+            white-space: nowrap; /* Empêche le retour à la ligne */
+            overflow: hidden; /* Cache le texte qui dépasse */
             text-overflow: ellipsis; /* Ajoute des points de suspension si le texte est trop long */
+            
+            /* Flexbox pour le centrage parfait */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%; /* S'assurer que le texte prend toute la hauteur disponible pour le centrage */
+            width: 100%; /* S'assurer que le texte prend toute la largeur disponible */
         }
-        /* Le label du compte à rebours est maintenant caché si vide, donc pas de style spécifique ici */
+        /* Ajustements responsifs pour la taille de la police du minuteur */
+        @media (min-width: 640px) { /* sm */
+            .countdown-box .countdown-text {
+                font-size: 2.8rem;
+            }
+        }
+        @media (min-width: 768px) { /* md */
+            .countdown-box .countdown-text {
+                font-size: 3.5rem;
+            }
+        }
+        @media (min-width: 1024px) { /* lg */
+            .countdown-box .countdown-text {
+                font-size: 4.5rem;
+            }
+        }
+
         .countdown-box .countdown-label {
-            display: none; /* Cache le label par défaut */
+            display: none;
         }
         .countdown-box .countdown-label.visible {
-            display: block; /* Affiche le label quand il y a du contenu */
-            @apply text-red-400 text-lg sm:text-xl font-semibold mt-2;
+            display: block;
+            @apply text-red-400 text-base sm:text-lg font-semibold mt-1;
         }
 
     </style>
@@ -235,48 +260,48 @@
         // Importation des modules Firebase nécessaires via CDN
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, onSnapshot, collection, addDoc, updateDoc, query, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, onSnapshot, collection, addDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // --- CONSTANTES ET INITIALISATION GLOBALE ---
-        // Les variables globales __app_id, __firebase_config et __initial_auth_token
-        // sont fournies par l'environnement Canvas.
-        // Nous utilisons des valeurs par défaut au cas où elles ne seraient pas définies (pour les tests locaux par exemple).
+        // --- GLOBAL CONSTANTS AND INITIALIZATION ---
+        // Global variables __app_id, __firebase_config and __initial_auth_token
+        // are provided by the Canvas environment.
+        // We use default values in case they are not defined (e.g., for local testing).
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-defqon-app-id';
         const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-        // Utilisation correcte de __initial_auth_token pour l'initialisation
+        // Correct usage of __initial_auth_token for initialization
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
         let currentUserId = null;
         let firebaseApp;
         let db;
         let auth;
-        let isAuthReady = false; // Indique si l'authentification est prête
+        let isAuthReady = false; // Indicates if authentication is ready
 
-        // Constantes pour le compte à rebours Defqon 1
-        const DEFQON_START_DATE = new Date('2025-06-26T12:00:00'); // 26 juin 2025, 12h00
-        const DEFQON_END_DATE = new Date('2025-06-29T23:59:59'); // 29 juin 2025, 23h59 (pour 4 jours jusqu'à dimanche soir)
+        // Constants for Defqon 1 countdown
+        const DEFQON_START_DATE = new Date('2025-06-26T12:00:00'); // June 26, 2025, 12:00 PM
+        const DEFQON_END_DATE = new Date('2025-06-29T23:59:59'); // June 29, 2025, 11:59 PM (for 4 days until Sunday evening)
         let countdownInterval = null;
 
-        // --- FONCTIONS UTILITAIRES ---
+        // --- UTILITY FUNCTIONS ---
 
-        // Fonction pour générer un UUID (identifiant unique universel)
+        // Function to generate a UUID (Universally Unique Identifier)
         function generateUUID() {
             return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-                const r = Math.random() * 16 | 0,
-                    v = c === 'x' ? r : (r & 0x3 | 0x8);
+                const r = Math.random() * 16 | 0;
+                const v = c === 'x' ? r : (r & 0x3 | 0x8);
                 return v.toString(16);
             });
         }
 
-        // Fonction utilitaire pour échapper le HTML et prévenir les XSS
+        // Utility function to escape HTML and prevent XSS
         function escapeHTML(str) {
             const div = document.createElement('div');
             div.appendChild(document.createTextNode(str));
             return div.innerHTML;
         }
 
-        // --- GESTION DES MESSAGES D'ALERTE PERSONNALISÉS ---
-        // Expose la fonction à la portée globale pour qu'elle puisse être appelée depuis le HTML
+        // --- CUSTOM ALERT MESSAGE BOX HANDLING ---
+        // Expose the function to the global scope so it can be called from HTML
         window.showMessageBox = function(message) {
             const msgBox = document.getElementById('messageBox');
             const msgContent = document.getElementById('messageBoxContent');
@@ -284,106 +309,106 @@
             msgBox.style.display = 'block';
         }
 
-        // Expose la fonction à la portée globale
+        // Expose the function to the global scope
         window.hideMessageBox = function() {
             document.getElementById('messageBox').style.display = 'none';
         }
 
-        // --- INITIALISATION FIREBASE ---
+        // --- FIREBASE INITIALIZATION ---
         try {
             firebaseApp = initializeApp(firebaseConfig);
             db = getFirestore(firebaseApp);
             auth = getAuth(firebaseApp);
 
-            // Gérer l'état d'authentification
+            // Manage authentication state
             onAuthStateChanged(auth, async (user) => {
                 if (user) {
                     currentUserId = user.uid;
                 } else {
-                    // Si aucun utilisateur n'est connecté, tenter de se connecter anonymement
+                    // If no user is logged in, try to sign in anonymously
                     try {
                         if (initialAuthToken) {
                             await signInWithCustomToken(auth, initialAuthToken);
                         } else {
                             await signInAnonymously(auth);
                         }
-                        // S'assurer qu'il y a un userId après l'authentification
+                        // Ensure there's a userId after authentication
                         currentUserId = auth.currentUser?.uid || generateUUID();
                     } catch (error) {
                         console.error("Erreur lors de la connexion anonyme ou avec jeton personnalisé:", error);
                         showMessageBox("Erreur de connexion : " + error.message);
-                        currentUserId = generateUUID(); // Fallback sur un ID aléatoire si l'auth échoue
+                        currentUserId = generateUUID(); // Fallback to a random ID if auth fails
                     }
                 }
-                isAuthReady = true; // Marquer l'authentification comme prête
-                // Une fois que l'authentification est prête, nous pouvons commencer à écouter les données
+                isAuthReady = true; // Mark authentication as ready
+                // Once authentication is ready, we can start listening to data
                 setupFirestoreListeners();
-                // Afficher l'onglet par défaut une fois que l'authentification et les écouteurs sont prêts
+                // Display the default tab once authentication and listeners are ready
                 window.setActiveTab('seRetrouver');
-                startCountdown(); // Démarrer le compte à rebours une fois que l'authentification est prête
+                startCountdown(); // Start the countdown once authentication is ready
             });
 
         } catch (error) {
             console.error("Erreur lors de l'initialisation de Firebase:", error);
             showMessageBox("Erreur critique: Impossible d'initialiser l'application. Vérifiez la configuration Firebase.");
-            // Empêche l'application de planter si Firebase n'est pas configuré
+            // Prevent the app from crashing if Firebase is not configured
             db = null;
             auth = null;
-            isAuthReady = true; // Marquer comme prêt même sans Firebase pour éviter le blocage total
+            isAuthReady = true; // Mark as ready even without Firebase to avoid total blocking
             window.setActiveTab('seRetrouver');
         }
 
 
-        // --- OPERATIONS FIRESTORE ---
+        // --- FIRESTORE OPERATIONS ---
 
-        let locationMessages = []; // Tableau local pour stocker les messages de localisation
-        let challenges = []; // Tableau local pour stocker les défis
-        let userProfiles = {}; // Stocke les profils des utilisateurs
-        let onlineUsersCount = 0; // Compteur des utilisateurs en ligne
+        let locationMessages = []; // Local array to store location messages
+        let challenges = []; // Local array to store challenges
+        let userProfiles = {}; // Stores user profiles
+        let onlineUsersCount = 0; // Counter for online users
 
-        // Configurer les écouteurs Firestore une fois l'authentification prête
+        // Set up Firestore listeners once authentication is ready
         function setupFirestoreListeners() {
-            if (!db || !isAuthReady) return; // S'assurer que Firebase est initialisé et l'auth prête
+            if (!db || !isAuthReady) return; // Ensure Firebase is initialized and auth is ready
 
-            // Écouteur pour les messages de localisation
+            // Listener for location messages
             const locationsColRef = collection(db, `artifacts/${appId}/public/data/locations`);
             onSnapshot(locationsColRef, (snapshot) => {
                 const fetchedLocations = [];
                 snapshot.forEach(doc => {
-                    // Firestore stocke les ID des documents, et nous voulons les inclure
+                    // Firestore stores document IDs, and we want to include them
                     fetchedLocations.push({ id: doc.id, ...doc.data() });
                 });
-                // Trier par horodatage pour afficher les plus récents en premier
+                // Sort by timestamp to display the most recent first
                 fetchedLocations.sort((a, b) => b.timestamp - a.timestamp);
-                locationMessages = fetchedLocations; // Mettre à jour le tableau local
-                updateLocationMessagesDisplay(); // Mettre à jour l'affichage
+                locationMessages = fetchedLocations; // Update local array
+                updateLocationMessagesDisplay(); // Update display
             }, (error) => {
                 console.error("Erreur lors de l'écoute des messages de localisation:", error);
                 showMessageBox("Impossible de charger les messages de localisation en temps réel.");
             });
 
-            // Écouteur pour les défis
+            // Listener for challenges
             const challengesColRef = collection(db, `artifacts/${appId}/public/data/challenges`);
             onSnapshot(challengesColRef, (snapshot) => {
                 const fetchedChallenges = [];
                 snapshot.forEach(doc => {
                     fetchedChallenges.push({ id: doc.id, ...doc.data() });
                 });
-                challenges = fetchedChallenges; // Mettre à jour le tableau local
-                updateChallengesDisplay(); // Mettre à jour l'affichage
-                updateChallengeGauges(); // Mettre à jour les jauges des défis
+                challenges = fetchedChallenges; // Update local array
+                updateChallengesDisplay(); // Update display
+                updateChallengeGauges(); // Update challenge gauges
             }, (error) => {
                 console.error("Erreur lors de l'écoute des défis:", error);
                 showMessageBox("Impossible de charger les défis en temps réel.");
             });
 
-            // Écouteur pour les profils utilisateurs et la présence en ligne
+            // Listener for user profiles and online presence
             const profilesColRef = collection(db, `artifacts/${appId}/public/data/profiles`);
             onSnapshot(profilesColRef, (snapshot) => {
                 const fetchedProfiles = {};
                 let count = 0;
                 const now = Date.now();
-                const onlineThreshold = now - 60000; // 60 secondes pour être considéré "en ligne"
+                const onlineThreshold = now - 60000; // 60 seconds to be considered "online"
 
                 snapshot.forEach(doc => {
                     const profile = { id: doc.id, ...doc.data() };
@@ -392,29 +417,29 @@
                         count++;
                     }
                 });
-                userProfiles = fetchedProfiles; // Mettre à jour le cache des profils
-                onlineUsersCount = count; // Mettre à jour le compteur
-                updateOnlineUsersCountDisplay(); // Mettre à jour l'affichage du compteur
-                updateChallengeGauges(); // Mettre à jour les jauges des défis (pour les noms d'utilisateur)
+                userProfiles = fetchedProfiles; // Update profile cache
+                onlineUsersCount = count; // Update counter
+                updateOnlineUsersCountDisplay(); // Update counter display
+                updateChallengeGauges(); // Update challenge gauges (for usernames)
             }, (error) => {
                 console.error("Erreur lors de l'écoute des profils utilisateurs:", error);
                 showMessageBox("Impossible de charger les profils utilisateurs.");
             });
 
-            // Mise à jour périodique du statut "lastOnline" de l'utilisateur actuel
+            // Periodic update of the current user's "lastOnline" status
             setInterval(async () => {
                 if (db && currentUserId && isAuthReady) {
                     try {
                         const userProfileRef = doc(db, `artifacts/${appId}/public/data/profiles`, currentUserId);
-                        await setDoc(userProfileRef, { lastOnline: Date.now() }, { merge: true }); // Mettre à jour seulement lastOnline
+                        await setDoc(userProfileRef, { lastOnline: Date.now() }, { merge: true }); // Only update lastOnline
                     } catch (error) {
                         console.error("Erreur lors de la mise à jour du statut en ligne:", error);
                     }
                 }
-            }, 30000); // Mettre à jour toutes les 30 secondes
+            }, 30000); // Update every 30 seconds
         }
 
-        // Fonction pour envoyer le message de localisation à Firestore
+        // Function to send the location message to Firestore
         window.sendLocationMessageEvent = async function() {
             if (!db || !currentUserId) {
                 showMessageBox("L'application n'est pas prête ou l'utilisateur n'est pas authentifié.");
@@ -425,21 +450,21 @@
             if (message === '') return;
 
             try {
-                // Utiliser setDoc avec l'ID utilisateur comme ID de document pour stocker la dernière position
+                // Use setDoc with the user ID as document ID to store the last position
                 const locationDocRef = doc(db, `artifacts/${appId}/public/data/locations`, currentUserId);
                 await setDoc(locationDocRef, {
                     userId: currentUserId,
                     message: message,
                     timestamp: Date.now(),
                 });
-                inputElement.value = ''; // Effacer le champ après l'envoi
+                inputElement.value = ''; // Clear the field after sending
             } catch (error) {
                 console.error("Erreur lors de l'envoi du message de localisation:", error);
                 showMessageBox("Erreur lors de l'envoi du message de localisation.");
             }
         }
 
-        // Fonction pour ajouter un nouveau défi à Firestore
+        // Function to add a new challenge to Firestore
         window.addChallengeEvent = async function() {
             if (!db || !currentUserId) {
                 showMessageBox("L'application n'est pas prête ou l'utilisateur n'est pas authentifié.");
@@ -450,7 +475,7 @@
             if (text === '') return;
 
             try {
-                // addDoc ajoute un nouveau document avec un ID généré automatiquement
+                // addDoc adds a new document with an automatically generated ID
                 await addDoc(collection(db, `artifacts/${appId}/public/data/challenges`), {
                     text: text,
                     completed: false,
@@ -464,7 +489,7 @@
             }
         }
 
-        // Fonction pour basculer l'état "complété" d'un défi dans Firestore
+        // Function to toggle the "completed" status of a challenge in Firestore
         window.toggleChallengeCompletionEvent = async function(challengeId, newStatus) {
             if (!db || !currentUserId) {
                 showMessageBox("L'application n'est pas prête ou l'utilisateur n'est pas authentifié.");
@@ -474,8 +499,8 @@
                 const challengeRef = doc(db, `artifacts/${appId}/public/data/challenges`, challengeId);
                 await updateDoc(challengeRef, {
                     completed: newStatus,
-                    completedBy: newStatus ? currentUserId : null, // Qui a complété
-                    completedAt: newStatus ? Date.now() : null, // Quand a été complété
+                    completedBy: newStatus ? currentUserId : null, // Who completed it
+                    completedAt: newStatus ? Date.now() : null, // When it was completed
                 });
             } catch (error) {
                 console.error("Erreur lors de la mise à jour du défi:", error);
@@ -483,10 +508,10 @@
             }
         }
 
-        // --- VALIDATION ET FORMATAGE DU NUMÉRO DE TÉLÉPHONE ---
-        // Expose la fonction à la portée globale pour l'événement oninput
+        // --- PHONE NUMBER VALIDATION AND FORMATTING ---
+        // Expose the function to the global scope for the oninput event
         window.formatPhoneNumber = function(input) {
-            let value = input.value.replace(/\D/g, ''); // Supprime tout ce qui n'est pas un chiffre
+            let value = input.value.replace(/\D/g, ''); // Remove anything that is not a digit
             let formattedValue = '';
             for (let i = 0; i < value.length; i++) {
                 if (i > 0 && i % 2 === 0) {
@@ -495,10 +520,10 @@
                 formattedValue += value[i];
             }
             input.value = formattedValue;
-            return formattedValue; // Retourne la valeur formatée pour le pré-remplissage
+            return formattedValue; // Return the formatted value for pre-filling
         }
 
-        // Fonction pour enregistrer le profil utilisateur (prénom, téléphone)
+        // Function to save user profile (first name, phone)
         window.saveProfile = async function() {
             if (!db || !currentUserId) {
                 showMessageBox("L'application n'est pas prête ou l'utilisateur n'est pas authentifié.");
@@ -508,7 +533,7 @@
             const firstNameInput = document.getElementById('firstNameInput');
             const phoneNumberInput = document.getElementById('phoneNumberInput');
             const firstName = firstNameInput.value.trim();
-            let phoneNumber = phoneNumberInput.value.replace(/\s/g, ''); // Supprime les espaces pour la validation
+            let phoneNumber = phoneNumberInput.value.replace(/\s/g, ''); // Remove spaces for validation
 
             if (!firstName) {
                 showMessageBox("Veuillez saisir votre prénom.");
@@ -525,8 +550,8 @@
                     userId: currentUserId,
                     firstName: firstName,
                     phoneNumber: phoneNumber,
-                    lastOnline: Date.now() // Mettre à jour aussi la dernière activité
-                }, { merge: true }); // Utiliser merge pour ne pas écraser d'autres champs si présents
+                    lastOnline: Date.now() // Also update last activity
+                }, { merge: true }); // Use merge to not overwrite other fields if present
                 showMessageBox("Votre profil a été enregistré avec succès !");
             } catch (error) {
                 console.error("Erreur lors de l'enregistrement du profil:", error);
@@ -534,9 +559,9 @@
             }
         }
 
-        // --- RENDU DES ONGLES ET MISE À JOUR DE L'AFFICHAGE ---
+        // --- TAB RENDERING AND DISPLAY UPDATES ---
 
-        // Rendu du contenu de l'onglet "Se retrouver"
+        // Render the content of the "Se retrouver" tab
         function renderSeRetrouverTab() {
             document.getElementById('tabContent').innerHTML = `
                 <div>
@@ -557,10 +582,10 @@
                     </div>
                 </div>
             `;
-            updateLocationMessagesDisplay(); // Mettre à jour l'affichage initial
+            updateLocationMessagesDisplay(); // Update initial display
         }
 
-        // Mettre à jour l'affichage des messages de localisation
+        // Update the display of location messages
         function updateLocationMessagesDisplay() {
             const listElement = document.getElementById('sharedLocationsList');
             if (!listElement) return;
@@ -578,7 +603,7 @@
                             <p class="text-sm text-gray-400">
                                 Par <span class="font-mono text-gray-300">${senderName}</span>
                                 ${' à '}
-                                ${loc.timestamp ? new Date(loc.timestamp).toLocaleTimeString() : 'N/A'}
+                                ${loc.timestamp ? new Date(loc.timestamp).toLocaleTimeString('fr-FR') : 'N/A'}
                             </p>
                         </div>
                     </div>
@@ -587,7 +612,7 @@
             }
         }
 
-        // Rendu du contenu de l'onglet "Défis"
+        // Render the content of the "Défis" tab
         function renderDefisTab() {
             document.getElementById('tabContent').innerHTML = `
                 <div>
@@ -611,11 +636,11 @@
                     </div>
                 </div>
             `;
-            updateChallengesDisplay(); // Mettre à jour l'affichage initial
-            updateChallengeGauges(); // Initialiser les jauges
+            updateChallengesDisplay(); // Update initial display
+            updateChallengeGauges(); // Initialize gauges
         }
 
-        // Mettre à jour l'affichage des défis
+        // Update the display of challenges
         function updateChallengesDisplay() {
             const listElement = document.getElementById('challengesList');
             if (!listElement) return;
@@ -638,19 +663,19 @@
                                 ${escapeHTML(challenge.text)}
                             </span>
                         </label>
-                        ${challenge.completed ? `<span class="text-sm text-green-400 ml-2">Completé par ${completedByName}</span>` : ''}
+                        ${challenge.completed ? `<span class="text-sm text-green-400 ml-2">Complété par ${completedByName}</span>` : ''}
                     </div>
                 `;
                 }).join('');
             }
         }
 
-        // --- Fonctions de mise à jour des jauges de défis ---
+        // --- Challenge Gauge Update Functions ---
         function updateChallengeGauges() {
             const gaugesContainer = document.getElementById('userGaugesContainer');
             if (!gaugesContainer) return;
 
-            // Filtrer les profils pour n'afficher que ceux qui ont un prénom
+            // Filter profiles to display only those with a first name
             const identifiableUsers = Object.values(userProfiles).filter(p => p.firstName);
 
             if (identifiableUsers.length === 0) {
@@ -658,30 +683,30 @@
                 return;
             }
 
-            gaugesContainer.innerHTML = ''; // Effacer les jauges précédentes
+            gaugesContainer.innerHTML = ''; // Clear previous gauges
 
             const usersToDisplay = identifiableUsers.sort((a, b) => {
-                // Tri pour que l'utilisateur actuel apparaisse en premier, puis les autres par prénom
+                // Sort so that the current user appears first, then others by first name
                 if (a.userId === currentUserId) return -1;
                 if (b.userId === currentUserId) return 1;
                 return a.firstName.localeCompare(b.firstName);
-            }).slice(0, 2); // Limiter à 2 utilisateurs pour les jauges
+            }).slice(0, 2); // Limit to 2 users for the gauges
 
-            // Pour les jauges circulaires
-            const radius = 45; // Rayon du cercle
-            const circumference = 2 * Math.PI * radius; // Circonférence du cercle
+            // For circular gauges
+            const radius = 45; // Circle radius
+            const circumference = 2 * Math.PI * radius; // Circle circumference
 
 
             usersToDisplay.forEach(profile => {
                 const userIdToDisplay = profile.userId;
                 const userCompletedChallenges = challenges.filter(c => c.completedBy === userIdToDisplay).length;
                 const totalChallengesExisting = challenges.length;
-                // Le pourcentage est basé sur les défis complétés par ce joueur par rapport au total des défis existants.
+                // The percentage is based on challenges completed by this player relative to the total existing challenges.
                 const completionPercentage = totalChallengesExisting > 0 ? (userCompletedChallenges / totalChallengesExisting) * 100 : 0; // 0.0 to 100.0
 
                 const userName = escapeHTML(profile.firstName);
 
-                // Calcul pour le cercle
+                // Calculation for the circle
                 const strokeDashoffset = circumference - (completionPercentage / 100) * circumference;
 
                 const gaugeHtml = `
@@ -699,7 +724,7 @@
             });
         }
 
-        // Rendu du contenu de l'onglet "Se connecter"
+        // Render the content of the "Se connecter" tab
         function renderConnectTab() {
             document.getElementById('tabContent').innerHTML = `
                 <div>
@@ -730,16 +755,16 @@
                     </div>
                 </div>
             `;
-            // Pré-remplir les champs si le profil existe déjà
+            // Pre-fill fields if profile already exists
             if (currentUserId && userProfiles[currentUserId]) {
                 document.getElementById('firstNameInput').value = userProfiles[currentUserId].firstName || '';
-                // Formater le numéro de téléphone lors du pré-remplissage
+                // Format the phone number when pre-filling
                 const rawPhoneNumber = userProfiles[currentUserId].phoneNumber || '';
                 document.getElementById('phoneNumberInput').value = window.formatPhoneNumber({ value: rawPhoneNumber });
             }
         }
 
-        // Mettre à jour l'affichage du compteur d'utilisateurs en ligne
+        // Update the display of the online users count
         function updateOnlineUsersCountDisplay() {
             const displayElement = document.getElementById('onlineUsersCount');
             if (displayElement) {
@@ -747,13 +772,13 @@
             }
         }
 
-        // --- Fonctions de Compte à Rebours ---
+        // --- Countdown Functions ---
         function startCountdown() {
             if (countdownInterval) {
-                clearInterval(countdownInterval); // S'assurer qu'il n'y a qu'un seul intervalle actif
+                clearInterval(countdownInterval); // Ensure there's only one active interval
             }
-            countdownInterval = setInterval(updateCountdown, 1000); // Mettre à jour chaque seconde
-            updateCountdown(); // Appeler une fois immédiatement pour éviter le délai initial
+            countdownInterval = setInterval(updateCountdown, 1000); // Update every second
+            updateCountdown(); // Call once immediately to avoid initial delay
         }
 
         function updateCountdown() {
@@ -763,12 +788,12 @@
 
 
             if (!countdownText || !countdownLabel) {
-                clearInterval(countdownInterval); // Arrêter si l'élément n'existe plus
+                clearInterval(countdownInterval); // Stop if the element no longer exists
                 return;
             }
 
             if (now < DEFQON_START_DATE.getTime()) {
-                // Avant le début du festival : Afficher le compte à rebours
+                // Before the festival starts: Display countdown
                 const distance = DEFQON_START_DATE.getTime() - now;
 
                 const days = Math.floor(distance / (1000 * 60 * 60 * 24));
@@ -777,49 +802,49 @@
                 const seconds = Math.floor((distance % (1000 * 60)) / 1000);
 
                 countdownText.innerHTML = `${days}j ${hours}h ${minutes}m ${seconds}s`;
-                // Vider le label
+                // Clear the label
                 countdownLabel.textContent = '';
-                countdownLabel.classList.remove('visible'); // Cacher le label
+                countdownLabel.classList.remove('visible'); // Hide the label
 
 
             } else if (now >= DEFQON_START_DATE.getTime() && now <= DEFQON_END_DATE.getTime()) {
-                // Pendant le festival : Afficher Jour 1, Jour 2, etc.
+                // During the festival: Display Day 1, Day 2, etc.
                 const oneDay = 1000 * 60 * 60 * 24;
                 const diffDays = Math.floor((now - DEFQON_START_DATE.getTime()) / oneDay);
-                let festivalDay = diffDays + 1; // Jour 1 = diff 0, Jour 2 = diff 1, etc.
+                let festivalDay = diffDays + 1; // Day 1 = diff 0, Day 2 = diff 1, etc.
 
-                if (festivalDay > 4) { // Assurez-vous de ne pas dépasser Jour 4 si le festival est fini
+                if (festivalDay > 4) { // Ensure not to exceed Day 4 if the festival is over
                     countdownText.innerHTML = "Terminé !";
                     countdownLabel.textContent = "Le festival Defqon 1 est terminé pour cette année !";
-                    countdownLabel.classList.add('visible'); // Afficher le label
-                    countdownLabel.classList.add('font-bold'); // Rendre le label en gras
+                    countdownLabel.classList.add('visible'); // Show the label
+                    countdownLabel.classList.add('font-bold'); // Make the label bold
                     clearInterval(countdownInterval);
                 } else {
                     countdownText.innerHTML = `Jour ${festivalDay}`;
                     countdownLabel.textContent = `Profitez de la Defqon 1 !`;
-                    countdownLabel.classList.add('visible'); // Afficher le label
-                    countdownLabel.classList.add('font-bold'); // Rendre le label en gras
+                    countdownLabel.classList.add('visible'); // Show the label
+                    countdownLabel.classList.add('font-bold'); // Make the label bold
                 }
             } else {
-                // Après la fin du festival
+                // After the festival ends
                 countdownText.innerHTML = "Terminé !";
                 countdownLabel.textContent = "Le festival Defqon 1 est terminé pour cette année !";
-                countdownLabel.classList.add('visible'); // Afficher le label
-                countdownLabel.classList.add('font-bold'); // Rendre le label en gras
-                clearInterval(countdownInterval); // Arrêter le compte à rebours
+                countdownLabel.classList.add('visible'); // Show the label
+                countdownLabel.classList.add('font-bold'); // Make the label bold
+                clearInterval(countdownInterval); // Stop the countdown
             }
         }
 
-        // Fonction pour activer un onglet
-        // Expose la fonction à la portée globale
+        // Function to activate a tab
+        // Expose the function to the global scope
         window.setActiveTab = function(tabName) {
-            // Mettre à jour les classes des boutons
+            // Update button classes
             document.querySelectorAll('.tab-button').forEach(button => {
                 button.classList.remove('active');
-                // Retirer explicitement la classe scale-105 pour éviter les résidus d'animation
+                // Explicitly remove the scale-105 class to avoid animation residue
                 button.classList.remove('scale-105');
             });
-            // Pour le bouton Se connecter (séparé)
+            // For the "Se connecter" button (separate)
             const tabConnectButton = document.getElementById('tabConnect');
             if (tabConnectButton) {
                 tabConnectButton.classList.remove('active');
@@ -827,9 +852,9 @@
             }
 
 
-            // Assurez-vous que l'élément existe avant de tenter d'ajouter la classe 'active'
+            // Ensure the element exists before attempting to add the 'active' class
             const targetButton = document.getElementById('tab' + tabName.charAt(0).toUpperCase() + tabName.slice(1));
-            // Le bouton 'Se connecter' est séparé, donc géré à part
+            // The 'Se connecter' button is separate, so handled separately
             if (targetButton) {
                 targetButton.classList.add('active');
             } else if (tabName === 'connect' && tabConnectButton) {
@@ -837,7 +862,7 @@
             }
 
 
-            // Afficher le contenu de l'onglet
+            // Display tab content
             switch (tabName) {
                 case 'seRetrouver':
                     renderSeRetrouverTab();
@@ -849,14 +874,14 @@
                     renderConnectTab();
                     break;
                 default:
-                    renderSeRetrouverTab(); // Revenir à l'onglet par défaut si un onglet invalide est demandé
+                    renderSeRetrouverTab(); // Revert to default tab if an invalid tab is requested
             }
         }
 
-        // --- INITIALISATION DE L'APPLICATION (après chargement du DOM) ---
-        // Le `DOMContentLoaded` est maintenant géré dans `onAuthStateChanged` pour s'assurer
-        // que l'authentification Firebase est prête avant de rendre le contenu initial.
-        // Assurez-vous d'arrêter le compte à rebours lorsque la page est déchargée
+        // --- APPLICATION INITIALIZATION (after DOM loading) ---
+        // `DOMContentLoaded` is now handled within `onAuthStateChanged` to ensure
+        // Firebase authentication is ready before rendering initial content.
+        // Ensure the countdown is stopped when the page is unloaded
         window.addEventListener('beforeunload', () => {
             if (countdownInterval) {
                 clearInterval(countdownInterval);
