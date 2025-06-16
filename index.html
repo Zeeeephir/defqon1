@@ -6,8 +6,6 @@
     <title>DEFQON 1 Companion - Avec Firestore</title>
     <!-- Chargement de Tailwind CSS via CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Chargement de la bibliothèque QRious pour les QR Codes -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
     <style>
         /* Importation de la police Inter */
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
@@ -16,13 +14,13 @@
             background-color: #000000; /* Noir profond pour le fond (Defqon style) */
             color: #ffffff; /* Texte blanc */
         }
-        /* Styles pour les boutons d'onglets */
+        /* Styles pour les boutons d'onglet */
         .tab-button {
             @apply px-4 py-2 rounded-md transition-all duration-300 ease-in-out transform; /* Ajout de transform pour les animations */
         }
         .tab-button.active {
             /* Changement: fond transparent, bordure inférieure rouge subtile, texte rougeoyant */
-            @apply bg-transparent text-red-400 scale-105; 
+            @apply bg-transparent text-red-400 scale-105;
             border: none; /* Pas de bordure pleine */
             border-bottom: 2px solid #dc2626; /* Bordure inférieure rouge */
             box-shadow: none; /* Pas d'ombre de boîte pour éviter l'effet rectangulaire */
@@ -224,27 +222,24 @@
     <div class="flex flex-col sm:flex-row items-center justify-center mb-8 gap-4">
         <!-- Onglets de navigation -->
         <div class="flex space-x-2 sm:space-x-4 p-1 bg-gray-800 rounded-lg shadow-inner">
-            <button id="tabAccueil" class="tab-button" onclick="setActiveTab('accueil')">
+            <button id="tabAccueil" class="tab-button">
                 Accueil
             </button>
-            <button id="tabSeRetrouver" class="tab-button" onclick="setActiveTab('seRetrouver')">
+            <button id="tabSeRetrouver" class="tab-button">
                 Se retrouver
             </button>
-            <button id="tabObjectifs" class="tab-button" onclick="setActiveTab('objectifs')">
+            <button id="tabObjectifs" class="tab-button">
                 Objectifs
             </button>
-            <button id="tabTchat" class="tab-button" onclick="setActiveTab('tchat')">
+            <button id="tabTchat" class="tab-button">
                 Tchat
             </button>
         </div>
         <!-- Bouton "Se connecter" / "Mon Profil" -->
-        <button id="tabConnect" class="px-4 py-2 rounded-md bg-red-700 text-white font-semibold transition-all shadow-lg hover:bg-red-800 hover:scale-105 active:scale-95 transform" onclick="setActiveTab('connect')">
+        <button id="tabConnect" class="px-4 py-2 rounded-md bg-red-700 text-white font-semibold transition-all shadow-lg hover:bg-red-800 hover:scale-105 active:scale-95 transform">
             S'enregistrer
         </button>
-        <!-- Nouveau bouton "NoisyNeighbors" -->
-        <button id="tabNoisyNeighbors" class="px-4 py-2 rounded-md bg-purple-700 text-white font-semibold transition-all shadow-lg hover:bg-purple-800 hover:scale-105 active:scale-95 transform" onclick="setActiveTab('noisyNeighbors')">
-            NoisyNeighbors
-        </button>
+        <!-- Le bouton "NoisyNeighbors" est supprimé -->
     </div>
 
     <!-- Contenu des onglets -->
@@ -283,7 +278,7 @@
         } else {
             console.warn("Attention: __firebase_config n'est pas défini. Si vous exécutez cette application en dehors de l'environnement Canvas, veuillez remplacer 'YOUR_FIREBASE_CONFIG_HERE' par votre configuration Firebase réelle.");
             firebaseConfig = {
-                apiKey: "AIzaSyAb5BBuf3qfFFMpXTwIp3XjBCf_VIIBsWo", 
+                apiKey: "AIzaSyAb5BBuf3qfFFMpXTwIp3XjBCf_VIIBsWo",
                 authDomain: "defqon1-9f38d.firebaseapp.com",
                 projectId: "defqon1-9f38d",
                 storageBucket: "defqon1-9f38d.firebasestorage.app",
@@ -305,10 +300,6 @@
         const DEFQON_START_DATE = new Date('2025-06-26T12:00:00'); // June 26, 2025, 12:00 PM
         const DEFQON_END_DATE = new Date('2025-06-29T23:59:59'); // June 29, 2025, 11:59 PM (for 4 days until Sunday evening)
         let countdownInterval = null;
-
-        // --- URLS POUR LES QR CODES ---
-        const INSTAGRAM_URL = "https://www.instagram.com/noisyneighborsmusic?igsh=MW5rZzJ4ajBpdDVvMA%3D%3D&utm_source=qr";
-        const SOUNDCLOUD_URL = "https://soundcloud.com/noisyneighborsmusics?utm_source=clipboard&utm_medium=text&utm_campaign=social_sharing";
 
         // --- VARIABLES GLOBALES POUR LES DONNÉES FIRESTORE ---
         let locationMessages = []; // Tableau local pour stocker les messages de localisation (texte)
@@ -349,160 +340,8 @@
             document.getElementById('messageBox').style.display = 'none';
         }
 
-        // --- FIREBASE INITIALIZATION ---
-        (async () => { // Utilisez une IIFE pour les opérations asynchrones au chargement du script
-            try {
-                firebaseApp = initializeApp(firebaseConfig);
-                db = getFirestore(firebaseApp);
-                auth = getAuth(firebaseApp);
-
-                // Set up the authentication state listener FIRST
-                onAuthStateChanged(auth, async (user) => {
-                    if (user) {
-                        currentUserId = user.uid;
-                        const userProfileRef = doc(db, `artifacts/${appId}/public/data/profiles`, currentUserId);
-                        const profileSnap = await getDoc(userProfileRef);
-                        hasUserProfile = profileSnap.exists() && profileSnap.data().firstName;
-                        console.log("ID utilisateur défini sur :", currentUserId);
-                    } else {
-                        // No user is authenticated, attempt to sign in (anonymously or with custom token)
-                        console.log("Aucun utilisateur authentifié. Tentative de connexion...");
-                        try {
-                            if (initialAuthToken) {
-                                await signInWithCustomToken(auth, initialAuthToken);
-                                console.log("Connecté avec jeton personnalisé via onAuthStateChanged fallback.");
-                            } else {
-                                await signInAnonymously(auth);
-                                console.log("Connecté anonymement via onAuthStateChanged fallback.");
-                            }
-                            // If sign-in succeeds, onAuthStateChanged will re-fire with the user object.
-                            // So, we don't call setupFirestoreListeners here directly.
-                        } catch (signInError) {
-                            console.error("Erreur de connexion anonyme ou par jeton personnalisé :", signInError);
-                            showMessageBox("Impossible de se connecter au service d'authentification. Certaines fonctionnalités peuvent être limitées.");
-                            currentUserId = generateUUID(); // Fallback local ID if auth fails
-                        }
-                        hasUserProfile = false; // Reset profile status
-                    }
-
-                    // This part ensures that Firebase is ready AND we have a currentUserId (even a local fallback)
-                    // before proceeding with setting up listeners and UI.
-                    isAuthReady = true; // Authentication state is resolved for this cycle
-                    updateConnectButtonState();
-                    // Ensure db and auth are initialized and currentUserId is set before setting up listeners
-                    if (db && auth && currentUserId) { 
-                         setupFirestoreListeners();
-                    } else {
-                         console.warn("Firestore listeners non configurés car l'authentification a échoué ou l'ID utilisateur est manquant.");
-                    }
-                    window.setActiveTab('accueil'); // Always show the home tab initially
-                });
-
-            } catch (error) {
-                console.error("Erreur lors de l'initialisation de Firebase :", error);
-                showMessageBox("Erreur critique : Impossible d'initialiser l'application. Veuillez vérifier la configuration Firebase.");
-                db = null;
-                auth = null;
-                isAuthReady = true;
-                window.setActiveTab('accueil');
-            }
-        })(); // Fin de l'IIFE
-
-
         // --- FIRESTORE OPERATIONS ---
-
-        // Set up Firestore listeners once authentication is ready
-        function setupFirestoreListeners() {
-            if (!db || !isAuthReady) return; // Ensure Firebase is initialized and auth is ready
-
-            // Écouteur pour les messages de localisation (texte)
-            const locationsColRef = collection(db, `artifacts/${appId}/public/data/locations`);
-            onSnapshot(locationsColRef, (snapshot) => {
-                const fetchedLocations = [];
-                snapshot.forEach(doc => {
-                    fetchedLocations.push({ id: doc.id, ...doc.data() });
-                });
-                fetchedLocations.sort((a, b) => b.timestamp - a.timestamp);
-                locationMessages = fetchedLocations;
-                updateLocationMessagesDisplay();
-            }, (error) => {
-                console.error("Erreur lors de l'écoute des messages de localisation:", error);
-                showMessageBox("Impossible de charger les messages de localisation en temps réel.");
-            });
-
-            // Écouteur pour les défis (maintenant objectifs)
-            const challengesColRef = collection(db, `artifacts/${appId}/public/data/challenges`);
-            onSnapshot(challengesColRef, (snapshot) => {
-                const fetchedChallenges = [];
-                snapshot.forEach(doc => {
-                    fetchedChallenges.push({ id: doc.id, ...doc.data() });
-                });
-                challenges = fetchedChallenges;
-                updateChallengesDisplay();
-                updateChallengeGauges();
-            }, (error) => {
-                console.error("Erreur lors de l'écoute des objectifs:", error);
-                showMessageBox("Impossible de charger les objectifs en temps réel.");
-            });
-
-            // Écouteur pour les messages de chat
-            const chatColRef = query(collection(db, `artifacts/${appId}/public/data/chatMessages`), orderBy('timestamp', 'asc'), limit(50)); // Limite à 50 derniers messages
-            onSnapshot(chatColRef, (snapshot) => {
-                const fetchedMessages = [];
-                snapshot.forEach(doc => {
-                    fetchedMessages.push({ id: doc.id, ...doc.data() });
-                });
-                chatMessages = fetchedMessages;
-                updateChatDisplay(); // Mettre à jour l'affichage du chat
-            }, (error) => {
-                console.error("Erreur lors de l'écoute des messages de chat:", error);
-                showMessageBox("Impossible de charger les messages de chat en temps réel.");
-            });
-
-            // Écouteur pour les profils utilisateurs et la présence en ligne
-            const profilesColRef = collection(db, `artifacts/${appId}/public/data/profiles`);
-            onSnapshot(profilesColRef, (snapshot) => {
-                const fetchedProfiles = {};
-                let count = 0;
-                const now = Date.now();
-                
-                snapshot.forEach(doc => {
-                    const profile = { id: doc.id, ...doc.data() };
-                    fetchedProfiles[doc.id] = profile;
-                    if (profile.lastOnline && profile.lastOnline > (now - 60000)) { // 60s pour le compteur "En ligne"
-                        count++;
-                    }
-                });
-                userProfiles = fetchedProfiles; // Mettre à jour le cache des profils
-                onlineUsersCount = count; // Mettre à jour le compteur
-
-                // Mettre à jour hasUserProfile basé sur le profil actuel
-                hasUserProfile = userProfiles[currentUserId] && userProfiles[currentUserId].firstName;
-                updateConnectButtonState(); // Mettre à jour le bouton de connexion/profil
-
-                updateOnlineUsersCountDisplay(); // Mettre à jour l'affichage du compteur
-                updateChallengeGauges(); // Mettre à jour les jauges des objectifs
-                updateChatDisplay(); // S'assurer que les noms d'utilisateur sont à jour dans le chat
-            }, (error) => {
-                console.error("Erreur lors de l'écoute des profils utilisateurs:", error);
-                showMessageBox("Impossible de charger les profils utilisateurs.");
-            });
-
-            // Mise à jour périodique du statut "lastOnline" de l'utilisateur actuel
-            setInterval(async () => {
-                if (db && currentUserId && isAuthReady) {
-                    try {
-                        const userProfileRef = doc(db, `artifacts/${appId}/public/data/profiles`, currentUserId);
-                        await setDoc(userProfileRef, { lastOnline: Date.now() }, { merge: true }); 
-                    }
-                     catch (error) {
-                        console.error("Erreur lors de la mise à jour du statut en ligne:", error);
-                    }
-                }
-            }, 30000); // Mettre à jour toutes les 30 secondes
-        }
-
-        // --- FONCTIONS D'ENVOI DE DONNÉES À FIRESTORE ---
+        // These functions will only be called after Firebase is initialized in the window.onload block.
 
         // Fonction pour envoyer le message de localisation (texte) à Firestore
         window.sendLocationMessageEvent = async function() {
@@ -645,7 +484,7 @@
 
             try {
                 const userProfileRef = doc(db, `artifacts/${appId}/public/data/profiles`, currentUserId);
-                
+
                 // Si l'utilisateur a déjà un profil et tente de s'enregistrer avec des données identiques,
                 // ou s'il y a déjà un prénom enregistré, on peut le considérer comme un doublon pour cette session anonyme.
                 if (hasUserProfile && userProfiles[currentUserId]?.firstName === firstName && userProfiles[currentUserId]?.phoneNumber === phoneNumber) {
@@ -660,12 +499,12 @@
                     lastOnline: Date.now()
                 }, { merge: true });
                 showMessageBox("Votre profil a été enregistré avec succès !");
-                
+
                 // Mettre à jour l'état et l'UI immédiatement
                 hasUserProfile = true;
                 updateConnectButtonState(); // Mettre à jour le texte du bouton principal
                 renderProfileTab(); // Re-rendre l'onglet pour afficher le profil
-                
+
             } catch (error) {
                 console.error("Erreur lors de l'enregistrement du profil:", error);
                 showMessageBox("Erreur lors de l'enregistrement de votre profil.");
@@ -760,7 +599,7 @@
         }
 
         // Mettre à jour l'affichage des messages de localisation (texte)
-        window.updateLocationMessagesDisplay = function() { 
+        window.updateLocationMessagesDisplay = function() {
             const listElement = document.getElementById('sharedLocationsList');
             if (!listElement) return;
 
@@ -1030,78 +869,6 @@
             }
         }
 
-        // Rendu du contenu de l'onglet "NoisyNeighbors"
-        function renderNoisyNeighborsTab() {
-            document.getElementById('tabContent').innerHTML = `
-                <div class="flex flex-col items-center justify-center p-4">
-                    <h2 class="text-3xl font-semibold mb-6 text-center text-red-400">NoisyNeighbors</h2>
-                    <p class="text-center text-gray-400 mb-6">Partagez notre musique et connectez-vous !</p>
-
-                    <div class="flex flex-col sm:flex-row gap-4 mb-8">
-                        <button onclick="generateAndDisplayQRCode('instagram')" class="btn-primary bg-pink-600 hover:bg-pink-700">
-                            Partager Instagram
-                        </button>
-                        <button onclick="generateAndDisplayQRCode('soundcloud')" class="btn-primary bg-orange-600 hover:bg-orange-700">
-                            Partager SoundCloud
-                        </button>
-                    </div>
-
-                    <div id="qrCodeContainer" class="flex flex-col items-center justify-center p-4 bg-gray-800 rounded-lg shadow-lg" style="min-height: 250px; min-width: 250px;">
-                        <p class="text-gray-400">Cliquez sur un bouton pour générer le QR Code.</p>
-                    </div>
-
-                    <button onclick="setActiveTab('accueil')" class="btn-primary mt-8">
-                        Retour à l'Accueil
-                    </button>
-                </div>
-            `;
-        }
-
-        // Fonction pour générer et afficher le QR Code
-        window.generateAndDisplayQRCode = function(platform) {
-            const qrCodeContainer = document.getElementById('qrCodeContainer');
-            qrCodeContainer.innerHTML = ''; // Effacer le contenu précédent (texte ou QR Code)
-
-            let urlToEncode = '';
-            let label = '';
-            if (platform === 'instagram') {
-                urlToEncode = INSTAGRAM_URL;
-                label = 'Instagram';
-            } else if (platform === 'soundcloud') {
-                urlToEncode = SOUNDCLOUD_URL;
-                label = 'SoundCloud';
-            }
-
-            if (urlToEncode) {
-                const canvas = document.createElement('canvas');
-                canvas.id = 'qrCodeCanvas';
-                // La taille du canvas doit être suffisamment grande pour le QR code
-                canvas.width = 200; 
-                canvas.height = 200; 
-
-                qrCodeContainer.appendChild(canvas);
-
-                // Crée le QR Code en utilisant la bibliothèque QRious
-                new QRious({
-                    element: canvas,
-                    value: urlToEncode,
-                    size: 200, // Taille réelle du QR code rendu sur le canvas
-                    padding: 20,
-                    foreground: '#dc2626', // Couleur rouge pour le QR code
-                    background: '#000000', // Fond noir
-                });
-
-                // Ajoute une étiquette sous le QR code
-                const qrLabel = document.createElement('p');
-                qrLabel.className = 'text-gray-400 mt-2';
-                qrLabel.textContent = `QR Code pour ${label}`;
-                qrCodeContainer.appendChild(qrLabel);
-
-            } else {
-                qrCodeContainer.innerHTML = '<p class="text-gray-400">URL non trouvée pour le QR Code.</p>';
-            }
-        };
-
         // Mettre à jour l'affichage du compteur d'utilisateurs en ligne
         function updateOnlineUsersCountDisplay() {
             const displayElement = document.getElementById('onlineUsersCount');
@@ -1127,7 +894,7 @@
 
             if (!countdownText || !countdownLabel) {
                 // If elements are not found, clear the interval to prevent errors
-                clearInterval(countdownInterval); 
+                clearInterval(countdownInterval);
                 countdownInterval = null; // Reset interval ID
                 return;
             }
@@ -1191,16 +958,11 @@
                 button.classList.remove('active');
                 button.classList.remove('scale-105');
             });
-            // Gérer séparément les boutons "Se connecter/Mon Profil" et "NoisyNeighbors"
+            // Gérer séparément le bouton "Se connecter/Mon Profil"
             const tabConnectButton = document.getElementById('tabConnect');
             if (tabConnectButton) {
                 tabConnectButton.classList.remove('active');
                 tabConnectButton.classList.remove('scale-105');
-            }
-            const tabNoisyNeighborsButton = document.getElementById('tabNoisyNeighbors');
-            if (tabNoisyNeighborsButton) {
-                tabNoisyNeighborsButton.classList.remove('active');
-                tabNoisyNeighborsButton.classList.remove('scale-105');
             }
 
 
@@ -1210,8 +972,6 @@
                 targetButton.classList.add('active');
             } else if (tabName === 'connect' && tabConnectButton) {
                 tabConnectButton.classList.add('active');
-            } else if (tabName === 'noisyNeighbors' && tabNoisyNeighborsButton) {
-                tabNoisyNeighborsButton.classList.add('active');
             }
 
 
@@ -1232,15 +992,166 @@
                 case 'connect':
                     renderProfileTab(); // Appel à la nouvelle fonction pour la gestion du profil/enregistrement
                     break;
-                case 'noisyNeighbors':
-                    renderNoisyNeighborsTab();
-                    break;
                 default:
                     renderAccueilTab();
             }
         }
 
-        // --- APPLICATION INITIALIZATION (après chargement du DOM) ---
+        // --- APPLICATION INITIALIZATION (après chargement du DOM et de toutes les ressources) ---
+        window.onload = () => { // Utiliser window.onload pour garantir que tous les scripts sont chargés
+            // --- FIREBASE INITIALIZATION AND AUTHENTICATION ---
+            // Moved inside window.onload to ensure all external scripts are loaded
+            (async () => {
+                // Set up Firestore listeners once authentication is ready (defined here to be in scope)
+                function setupFirestoreListeners() {
+                    if (!db || !isAuthReady) return; // Ensure Firebase is initialized and auth is ready
+
+                    // Écouteur pour les messages de localisation (texte)
+                    const locationsColRef = collection(db, `artifacts/${appId}/public/data/locations`);
+                    onSnapshot(locationsColRef, (snapshot) => {
+                        const fetchedLocations = [];
+                        snapshot.forEach(doc => {
+                            fetchedLocations.push({ id: doc.id, ...doc.data() });
+                        });
+                        fetchedLocations.sort((a, b) => b.timestamp - a.timestamp);
+                        locationMessages = fetchedLocations;
+                        updateLocationMessagesDisplay();
+                    }, (error) => {
+                        console.error("Erreur lors de l'écoute des messages de localisation:", error);
+                        showMessageBox("Impossible de charger les messages de localisation en temps réel.");
+                    });
+
+                    // Écouteur pour les défis (maintenant objectifs)
+                    const challengesColRef = collection(db, `artifacts/${appId}/public/data/challenges`);
+                    onSnapshot(challengesColRef, (snapshot) => {
+                        const fetchedChallenges = [];
+                        snapshot.forEach(doc => {
+                            fetchedChallenges.push({ id: doc.id, ...doc.data() });
+                        });
+                        challenges = fetchedChallenges;
+                        updateChallengesDisplay();
+                        updateChallengeGauges();
+                    }, (error) => {
+                        console.error("Erreur lors de l'écoute des objectifs:", error);
+                        showMessageBox("Impossible de charger les objectifs en temps réel.");
+                    });
+
+                    // Écouteur pour les messages de chat
+                    const chatColRef = query(collection(db, `artifacts/${appId}/public/data/chatMessages`), orderBy('timestamp', 'asc'), limit(50)); // Limite à 50 derniers messages
+                    onSnapshot(chatColRef, (snapshot) => {
+                        const fetchedMessages = [];
+                        snapshot.forEach(doc => {
+                            fetchedMessages.push({ id: doc.id, ...doc.data() });
+                        });
+                        chatMessages = fetchedMessages;
+                        updateChatDisplay(); // Mettre à jour l'affichage du chat
+                    }, (error) => {
+                        console.error("Erreur lors de l'écoute des messages de chat:", error);
+                        showMessageBox("Impossible de charger les messages de chat en temps réel.");
+                    });
+
+                    // Écouteur pour les profils utilisateurs et la présence en ligne
+                    const profilesColRef = collection(db, `artifacts/${appId}/public/data/profiles`);
+                    onSnapshot(profilesColRef, (snapshot) => {
+                        const fetchedProfiles = {};
+                        let count = 0;
+                        const now = Date.now();
+                        
+                        snapshot.forEach(doc => {
+                            const profile = { id: doc.id, ...doc.data() };
+                            fetchedProfiles[doc.id] = profile;
+                            if (profile.lastOnline && profile.lastOnline > (now - 60000)) { // 60s pour le compteur "En ligne"
+                                count++;
+                            }
+                        });
+                        userProfiles = fetchedProfiles; // Mettre à jour le cache des profils
+                        onlineUsersCount = count; // Mettre à jour le compteur
+
+                        // Mettre à jour hasUserProfile basé sur le profil actuel
+                        hasUserProfile = userProfiles[currentUserId] && userProfiles[currentUserId].firstName;
+                        updateConnectButtonState(); // Mettre à jour le bouton de connexion/profil
+
+                        updateOnlineUsersCountDisplay(); // Mettre à jour l'affichage du compteur
+                        updateChallengeGauges(); // Mettre à jour les jauges des objectifs
+                        updateChatDisplay(); // S'assurer que les noms d'utilisateur sont à jour dans le chat
+                    }, (error) => {
+                        console.error("Erreur lors de l'écoute des profils utilisateurs:", error);
+                        showMessageBox("Impossible de charger les profils utilisateurs.");
+                    });
+
+                    // Mise à jour périodique du statut "lastOnline" de l'utilisateur actuel
+                    setInterval(async () => {
+                        if (db && currentUserId && isAuthReady) {
+                            try {
+                                const userProfileRef = doc(db, `artifacts/${appId}/public/data/profiles`, currentUserId);
+                                await setDoc(userProfileRef, { lastOnline: Date.now() }, { merge: true }); 
+                            }
+                            catch (error) {
+                                console.error("Erreur lors de la mise à jour du statut en ligne:", error);
+                            }
+                        }
+                    }, 30000); // Mettre à jour toutes les 30 secondes
+                } // End of setupFirestoreListeners function
+
+                try {
+                    firebaseApp = initializeApp(firebaseConfig);
+                    db = getFirestore(firebaseApp);
+                    auth = getAuth(firebaseApp);
+
+                    onAuthStateChanged(auth, async (user) => {
+                        if (user) {
+                            currentUserId = user.uid;
+                            const userProfileRef = doc(db, `artifacts/${appId}/public/data/profiles`, currentUserId);
+                            const profileSnap = await getDoc(userProfileRef);
+                            hasUserProfile = profileSnap.exists() && profileSnap.data().firstName;
+                            console.log("ID utilisateur défini sur :", currentUserId);
+                        } else {
+                            console.log("Aucun utilisateur authentifié. Tentative de connexion...");
+                            try {
+                                if (initialAuthToken) {
+                                    await signInWithCustomToken(auth, initialAuthToken);
+                                    console.log("Connecté avec jeton personnalisé via onAuthStateChanged fallback.");
+                                } else {
+                                    await signInAnonymously(auth);
+                                    console.log("Connecté anonymement via onAuthStateChanged fallback.");
+                                }
+                            } catch (signInError) {
+                                console.error("Erreur de connexion anonyme ou par jeton personnalisé :", signInError);
+                                showMessageBox("Impossible de se connecter au service d'authentification. Certaines fonctionnalités peuvent être limitées.");
+                                currentUserId = generateUUID();
+                            }
+                            hasUserProfile = false;
+                        }
+
+                        isAuthReady = true;
+                        updateConnectButtonState();
+                        if (db && auth && currentUserId) {
+                            // Call setupFirestoreListeners here, after it's defined
+                            setupFirestoreListeners();
+                        } else {
+                            console.warn("Firestore listeners non configurés car l'authentification a échoué ou l'ID utilisateur est manquant.");
+                        }
+                        window.setActiveTab('accueil');
+                    });
+
+                } catch (error) {
+                    console.error("Erreur lors de l'initialisation de Firebase :", error);
+                    showMessageBox("Erreur critique : Impossible d'initialiser l'application. Veuillez vérifier la configuration Firebase.");
+                    db = null;
+                    auth = null;
+                    isAuthReady = true;
+                    window.setActiveTab('accueil');
+                }
+            })();
+
+            // Attacher les gestionnaires d'événements aux boutons des onglets
+            document.getElementById('tabAccueil').addEventListener('click', () => setActiveTab('accueil'));
+            document.getElementById('tabSeRetrouver').addEventListener('click', () => setActiveTab('seRetrouver'));
+            document.getElementById('tabObjectifs').addEventListener('click', () => setActiveTab('objectifs'));
+            document.getElementById('tabTchat').addEventListener('click', () => setActiveTab('tchat'));
+            document.getElementById('tabConnect').addEventListener('click', () => setActiveTab('connect'));
+        };
+
         window.addEventListener('beforeunload', () => {
             if (countdownInterval) {
                 clearInterval(countdownInterval);
