@@ -1,0 +1,867 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DEFQON 1 Companion - Avec Firestore</title>
+    <!-- Chargement de Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Importation de la police Inter */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #000000; /* Noir profond pour le fond (Defqon style) */
+            color: #ffffff; /* Texte blanc */
+        }
+        /* Styles pour les boutons d'onglets */
+        .tab-button {
+            @apply px-4 py-2 rounded-md transition-all duration-300 ease-in-out transform; /* Ajout de transform pour les animations */
+        }
+        .tab-button.active {
+            @apply bg-red-600 text-white shadow-lg scale-105; /* Rouge pour l'onglet actif avec léger agrandissement */
+            box-shadow: 0 0 25px rgba(220, 38, 38, 0.8); /* Ombre rouge plus prononcée */
+        }
+        .tab-button:not(.active) {
+            @apply bg-gray-800 text-gray-300 hover:bg-gray-700 hover:scale-105 active:scale-95; /* Gris foncé, survol et clic */
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); /* Ombre par défaut */
+        }
+        .tab-button:not(.active):hover {
+            box-shadow: 0 0 20px rgba(220, 38, 38, 0.7); /* Ombre rouge plus intense au survol */
+        }
+
+        /* Styles pour les champs de saisie */
+        .input-field {
+            /* Utilisation d'un gris un peu plus clair pour un meilleur contraste */
+            @apply w-full p-3 rounded-md bg-gray-700 border border-gray-600 focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all;
+            color: #333333 !important; /* Rendre le texte tapé explicitement gris foncé (presque noir) et prioritaire */
+        }
+        .input-field::placeholder { /* Couleur pour le texte de substitution */
+            color: #a0aec0 !important; /* Un gris plus clair pour les placeholders et prioritaire */
+            opacity: 1; /* Assure que le placeholder n'est pas transparent */
+        }
+        /* Styles pour les boutons principaux (submit) */
+        .btn-primary {
+            @apply px-6 py-3 rounded-md bg-red-700 text-white font-semibold transition-all shadow-md transform hover:scale-105 active:scale-95; /* Rouge vif, survol et clic */
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); /* Ombre par défaut */
+        }
+        .btn-primary:hover {
+            box-shadow: 0 0 25px rgba(220, 38, 38, 0.8); /* Ombre rouge au survol */
+        }
+
+        /* Styles pour les cartes de contenu */
+        .card {
+            @apply bg-gray-900 p-4 rounded-lg shadow-lg mb-4; /* Gris très foncé pour les cartes */
+        }
+        /* Styles pour les zones de contenu défilantes */
+        .scrollable-content {
+            max-height: 70vh; /* Hauteur maximale pour le défilement */
+            overflow-y: auto; /* Permet le défilement vertical */
+            scrollbar-width: thin; /* Style de la barre de défilement pour Firefox */
+            scrollbar-color: #880808 #333333; /* Couleurs de la barre de défilement pour Firefox (Rouge/Noir) */
+        }
+        /* Styles de la barre de défilement pour Webkit (Chrome, Safari) */
+        .scrollable-content::-webkit-scrollbar {
+            width: 8px;
+        }
+        .scrollable-content::-webkit-scrollbar-track {
+            background: #333333; /* Noir/Gris pour le fond de la barre */
+            border-radius: 10px;
+        }
+        .scrollable-content::-webkit-scrollbar-thumb {
+            background-color: #880808; /* Rouge pour le curseur de la barre */
+            border-radius: 10px;
+            border: 2px solid #333333;
+        }
+        /* Styles pour la boîte de message personnalisée */
+        .message-box {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: #222; /* Gris foncé */
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            z-index: 1000;
+            display: none; /* Caché par défaut */
+        }
+        .message-box button {
+            background-color: #dc2626; /* Rouge */
+            color: white;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+
+        /* Styles pour les jauges circulaires (REVISITÉES) */
+        .gauge-item-wrapper {
+            display: flex;
+            flex-direction: column; /* Organise en colonne: jauge puis nom */
+            align-items: center;
+            min-width: 150px; /* Assure un espace minimum pour chaque jauge */
+            height: 200px; /* Hauteur de la zone pour la jauge et le nom */
+            justify-content: center; /* Centrer la jauge verticalement */
+            position: relative; /* Pour positionner correctement le SVG et les textes */
+        }
+        .gauge-svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            overflow: visible; /* Assure que le stroke ne soit pas coupé */
+        }
+        .gauge-bg {
+            stroke: #333333; /* Couleur de fond de la jauge */
+            stroke-width: 15;
+            fill: none;
+        }
+        .gauge-progress {
+            stroke: #dc2626; /* Rouge Defqon pour la progression */
+            stroke-width: 15;
+            fill: none;
+            transition: stroke-dasharray 0.5s ease-in-out; /* Animation fluide */
+            stroke-linecap: round; /* Rendre les extrémités de la barre arrondies */
+            filter: drop-shadow(0 0 5px rgba(220, 38, 38, 0.7)); /* Ombre pour la lueur */
+            transform: rotate(-90deg); /* Rotation pour démarrer en haut */
+            transform-origin: 50% 50%; /* Point de pivot pour la rotation */
+        }
+        .gauge-text-overlay {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 2.5rem; /* Taille plus grande pour le nombre */
+            font-weight: bold;
+            text-align: center;
+            z-index: 1; /* Assure que le texte est au-dessus du SVG */
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.5); /* Lueur sur le texte */
+        }
+        .gauge-label-overlay {
+            position: absolute;
+            top: 75%; /* Positionnement de l'étiquette sous le nombre */
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #a0aec0; /* Gris clair */
+            font-size: 1rem; /* Taille de police légèrement plus grande */
+            text-align: center;
+            z-index: 1; /* Assure que le texte est au-dessus du SVG */
+        }
+
+
+        /* Style pour le timer */
+        @keyframes subtle-glow {
+            0% { box-shadow: 0 0 15px rgba(220, 38, 38, 0.6), inset 0 0 8px rgba(220, 38, 38, 0.3); border-color: #dc2626; }
+            50% { box-shadow: 0 0 40px rgba(220, 38, 38, 1), inset 0 0 15px rgba(220, 38, 38, 0.5); border-color: #ef4444; }
+            100% { box-shadow: 0 0 15px rgba(220, 38, 38, 0.6), inset 0 0 8px rgba(220, 38, 38, 0.3); border-color: #dc2626; }
+        }
+        .countdown-box {
+            @apply bg-gray-900 border-2 border-red-700 p-8 rounded-xl text-center mb-8 flex items-center justify-center; /* Augmenté le padding pour plus d'espace */
+            animation: subtle-glow 2.5s infinite alternate; /* Appliquer l'animation de pulsation */
+            width: 90%; /* Occupe plus de largeur */
+            max-width: 600px; /* Largeur maximale pour le desktop */
+            height: 120px; /* Hauteur fixe pour une meilleure visibilité */
+            overflow: hidden; /* Cache le débordement potentiel du texte lors de l'adaptation */
+        }
+        .countdown-box .countdown-text {
+            @apply text-white text-4xl sm:text-5xl lg:text-6xl font-bold; /* Plus grand pour l'effet horloge et responsive */
+            text-shadow: 0 0 15px rgba(255, 255, 255, 0.7); /* Effet de lueur plus prononcé sur le texte */
+            white-space: nowrap; /* Empêche le texte de se casser sur plusieurs lignes */
+            overflow: hidden; /* Cache le débordement horizontal */
+            text-overflow: ellipsis; /* Ajoute des points de suspension si le texte est trop long */
+        }
+        /* Le label du compte à rebours est maintenant caché si vide, donc pas de style spécifique ici */
+        .countdown-box .countdown-label {
+            display: none; /* Cache le label par défaut */
+        }
+        .countdown-box .countdown-label.visible {
+            display: block; /* Affiche le label quand il y a du contenu */
+            @apply text-red-400 text-lg sm:text-xl font-semibold mt-2;
+        }
+
+    </style>
+</head>
+<body class="min-h-screen p-4 sm:p-6 lg:p-8 flex flex-col items-center">
+    <h1 class="text-4xl sm:text-5xl font-bold text-center mb-8 text-red-500">DEFQON 1 Companion</h1>
+
+    <p class="text-center text-gray-400 mb-6">
+        <span id="onlineUsersCount" class="ml-4 px-3 py-1 rounded-full bg-red-500 text-white text-sm font-semibold">
+            En ligne: 0
+        </span>
+    </p>
+
+    <!-- Compte à rebours du festival -->
+    <div id="countdownDisplay" class="countdown-box">
+        <div class="countdown-text">Chargement...</div>
+        <!-- Le label sera vide si le compte à rebours est actif -->
+        <div class="countdown-label"></div>
+    </div>
+
+    <!-- Conteneur des onglets et du bouton de connexion -->
+    <div class="flex flex-col sm:flex-row items-center justify-center mb-8 gap-4">
+        <!-- Onglets de navigation -->
+        <div class="flex space-x-2 sm:space-x-4 p-1 bg-gray-800 rounded-lg shadow-inner">
+            <button id="tabSeRetrouver" class="tab-button active" onclick="setActiveTab('seRetrouver')">
+                Se retrouver
+            </button>
+            <button id="tabDefis" class="tab-button" onclick="setActiveTab('defis')">
+                Défis
+            </button>
+        </div>
+        <!-- Bouton "Se connecter" séparé -->
+        <button id="tabConnect" class="px-4 py-2 rounded-md bg-red-700 text-white font-semibold transition-all shadow-lg hover:bg-red-800 hover:scale-105 active:scale-95 transform" onclick="setActiveTab('connect')">
+            Se connecter
+        </button>
+    </div>
+
+    <!-- Contenu des onglets -->
+    <div id="tabContent" class="w-full max-w-2xl bg-gray-900 p-6 rounded-xl shadow-2xl">
+        <!-- Le contenu des onglets sera injecté ici par JavaScript -->
+    </div>
+
+    <!-- Message Box (remplace alert() et confirm()) -->
+    <div id="messageBox" class="message-box">
+        <p id="messageBoxContent"></p>
+        <button onclick="hideMessageBox()">OK</button>
+    </div>
+
+    <!-- Script Firebase SDKs -->
+    <script type="module">
+        // Importation des modules Firebase nécessaires via CDN
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot, collection, addDoc, updateDoc, query, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- CONSTANTES ET INITIALISATION GLOBALE ---
+        // Les variables globales __app_id, __firebase_config et __initial_auth_token
+        // sont fournies par l'environnement Canvas.
+        // Nous utilisons des valeurs par défaut au cas où elles ne seraient pas définies (pour les tests locaux par exemple).
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-defqon-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        // Utilisation correcte de __initial_auth_token pour l'initialisation
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let currentUserId = null;
+        let firebaseApp;
+        let db;
+        let auth;
+        let isAuthReady = false; // Indique si l'authentification est prête
+
+        // Constantes pour le compte à rebours Defqon 1
+        const DEFQON_START_DATE = new Date('2025-06-26T12:00:00'); // 26 juin 2025, 12h00
+        const DEFQON_END_DATE = new Date('2025-06-29T23:59:59'); // 29 juin 2025, 23h59 (pour 4 jours jusqu'à dimanche soir)
+        let countdownInterval = null;
+
+        // --- FONCTIONS UTILITAIRES ---
+
+        // Fonction pour générer un UUID (identifiant unique universel)
+        function generateUUID() {
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                const r = Math.random() * 16 | 0,
+                    v = c === 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+        }
+
+        // Fonction utilitaire pour échapper le HTML et prévenir les XSS
+        function escapeHTML(str) {
+            const div = document.createElement('div');
+            div.appendChild(document.createTextNode(str));
+            return div.innerHTML;
+        }
+
+        // --- GESTION DES MESSAGES D'ALERTE PERSONNALISÉS ---
+        // Expose la fonction à la portée globale pour qu'elle puisse être appelée depuis le HTML
+        window.showMessageBox = function(message) {
+            const msgBox = document.getElementById('messageBox');
+            const msgContent = document.getElementById('messageBoxContent');
+            msgContent.textContent = message;
+            msgBox.style.display = 'block';
+        }
+
+        // Expose la fonction à la portée globale
+        window.hideMessageBox = function() {
+            document.getElementById('messageBox').style.display = 'none';
+        }
+
+        // --- INITIALISATION FIREBASE ---
+        try {
+            firebaseApp = initializeApp(firebaseConfig);
+            db = getFirestore(firebaseApp);
+            auth = getAuth(firebaseApp);
+
+            // Gérer l'état d'authentification
+            onAuthStateChanged(auth, async (user) => {
+                if (user) {
+                    currentUserId = user.uid;
+                } else {
+                    // Si aucun utilisateur n'est connecté, tenter de se connecter anonymement
+                    try {
+                        if (initialAuthToken) {
+                            await signInWithCustomToken(auth, initialAuthToken);
+                        } else {
+                            await signInAnonymously(auth);
+                        }
+                        // S'assurer qu'il y a un userId après l'authentification
+                        currentUserId = auth.currentUser?.uid || generateUUID();
+                    } catch (error) {
+                        console.error("Erreur lors de la connexion anonyme ou avec jeton personnalisé:", error);
+                        showMessageBox("Erreur de connexion : " + error.message);
+                        currentUserId = generateUUID(); // Fallback sur un ID aléatoire si l'auth échoue
+                    }
+                }
+                isAuthReady = true; // Marquer l'authentification comme prête
+                // Une fois que l'authentification est prête, nous pouvons commencer à écouter les données
+                setupFirestoreListeners();
+                // Afficher l'onglet par défaut une fois que l'authentification et les écouteurs sont prêts
+                window.setActiveTab('seRetrouver');
+                startCountdown(); // Démarrer le compte à rebours une fois que l'authentification est prête
+            });
+
+        } catch (error) {
+            console.error("Erreur lors de l'initialisation de Firebase:", error);
+            showMessageBox("Erreur critique: Impossible d'initialiser l'application. Vérifiez la configuration Firebase.");
+            // Empêche l'application de planter si Firebase n'est pas configuré
+            db = null;
+            auth = null;
+            isAuthReady = true; // Marquer comme prêt même sans Firebase pour éviter le blocage total
+            window.setActiveTab('seRetrouver');
+        }
+
+
+        // --- OPERATIONS FIRESTORE ---
+
+        let locationMessages = []; // Tableau local pour stocker les messages de localisation
+        let challenges = []; // Tableau local pour stocker les défis
+        let userProfiles = {}; // Stocke les profils des utilisateurs
+        let onlineUsersCount = 0; // Compteur des utilisateurs en ligne
+
+        // Configurer les écouteurs Firestore une fois l'authentification prête
+        function setupFirestoreListeners() {
+            if (!db || !isAuthReady) return; // S'assurer que Firebase est initialisé et l'auth prête
+
+            // Écouteur pour les messages de localisation
+            const locationsColRef = collection(db, `artifacts/${appId}/public/data/locations`);
+            onSnapshot(locationsColRef, (snapshot) => {
+                const fetchedLocations = [];
+                snapshot.forEach(doc => {
+                    // Firestore stocke les ID des documents, et nous voulons les inclure
+                    fetchedLocations.push({ id: doc.id, ...doc.data() });
+                });
+                // Trier par horodatage pour afficher les plus récents en premier
+                fetchedLocations.sort((a, b) => b.timestamp - a.timestamp);
+                locationMessages = fetchedLocations; // Mettre à jour le tableau local
+                updateLocationMessagesDisplay(); // Mettre à jour l'affichage
+            }, (error) => {
+                console.error("Erreur lors de l'écoute des messages de localisation:", error);
+                showMessageBox("Impossible de charger les messages de localisation en temps réel.");
+            });
+
+            // Écouteur pour les défis
+            const challengesColRef = collection(db, `artifacts/${appId}/public/data/challenges`);
+            onSnapshot(challengesColRef, (snapshot) => {
+                const fetchedChallenges = [];
+                snapshot.forEach(doc => {
+                    fetchedChallenges.push({ id: doc.id, ...doc.data() });
+                });
+                challenges = fetchedChallenges; // Mettre à jour le tableau local
+                updateChallengesDisplay(); // Mettre à jour l'affichage
+                updateChallengeGauges(); // Mettre à jour les jauges des défis
+            }, (error) => {
+                console.error("Erreur lors de l'écoute des défis:", error);
+                showMessageBox("Impossible de charger les défis en temps réel.");
+            });
+
+            // Écouteur pour les profils utilisateurs et la présence en ligne
+            const profilesColRef = collection(db, `artifacts/${appId}/public/data/profiles`);
+            onSnapshot(profilesColRef, (snapshot) => {
+                const fetchedProfiles = {};
+                let count = 0;
+                const now = Date.now();
+                const onlineThreshold = now - 60000; // 60 secondes pour être considéré "en ligne"
+
+                snapshot.forEach(doc => {
+                    const profile = { id: doc.id, ...doc.data() };
+                    fetchedProfiles[doc.id] = profile;
+                    if (profile.lastOnline && profile.lastOnline > onlineThreshold) {
+                        count++;
+                    }
+                });
+                userProfiles = fetchedProfiles; // Mettre à jour le cache des profils
+                onlineUsersCount = count; // Mettre à jour le compteur
+                updateOnlineUsersCountDisplay(); // Mettre à jour l'affichage du compteur
+                updateChallengeGauges(); // Mettre à jour les jauges des défis (pour les noms d'utilisateur)
+            }, (error) => {
+                console.error("Erreur lors de l'écoute des profils utilisateurs:", error);
+                showMessageBox("Impossible de charger les profils utilisateurs.");
+            });
+
+            // Mise à jour périodique du statut "lastOnline" de l'utilisateur actuel
+            setInterval(async () => {
+                if (db && currentUserId && isAuthReady) {
+                    try {
+                        const userProfileRef = doc(db, `artifacts/${appId}/public/data/profiles`, currentUserId);
+                        await setDoc(userProfileRef, { lastOnline: Date.now() }, { merge: true }); // Mettre à jour seulement lastOnline
+                    } catch (error) {
+                        console.error("Erreur lors de la mise à jour du statut en ligne:", error);
+                    }
+                }
+            }, 30000); // Mettre à jour toutes les 30 secondes
+        }
+
+        // Fonction pour envoyer le message de localisation à Firestore
+        window.sendLocationMessageEvent = async function() {
+            if (!db || !currentUserId) {
+                showMessageBox("L'application n'est pas prête ou l'utilisateur n'est pas authentifié.");
+                return;
+            }
+            const inputElement = document.getElementById('locationMessageInput');
+            const message = inputElement.value.trim();
+            if (message === '') return;
+
+            try {
+                // Utiliser setDoc avec l'ID utilisateur comme ID de document pour stocker la dernière position
+                const locationDocRef = doc(db, `artifacts/${appId}/public/data/locations`, currentUserId);
+                await setDoc(locationDocRef, {
+                    userId: currentUserId,
+                    message: message,
+                    timestamp: Date.now(),
+                });
+                inputElement.value = ''; // Effacer le champ après l'envoi
+            } catch (error) {
+                console.error("Erreur lors de l'envoi du message de localisation:", error);
+                showMessageBox("Erreur lors de l'envoi du message de localisation.");
+            }
+        }
+
+        // Fonction pour ajouter un nouveau défi à Firestore
+        window.addChallengeEvent = async function() {
+            if (!db || !currentUserId) {
+                showMessageBox("L'application n'est pas prête ou l'utilisateur n'est pas authentifié.");
+                return;
+            }
+            const inputElement = document.getElementById('newChallengeInput');
+            const text = inputElement.value.trim();
+            if (text === '') return;
+
+            try {
+                // addDoc ajoute un nouveau document avec un ID généré automatiquement
+                await addDoc(collection(db, `artifacts/${appId}/public/data/challenges`), {
+                    text: text,
+                    completed: false,
+                    createdBy: currentUserId,
+                    createdAt: Date.now(),
+                });
+                inputElement.value = '';
+            } catch (error) {
+                console.error("Erreur lors de l'ajout du défi:", error);
+                showMessageBox("Erreur lors de l'ajout du défi.");
+            }
+        }
+
+        // Fonction pour basculer l'état "complété" d'un défi dans Firestore
+        window.toggleChallengeCompletionEvent = async function(challengeId, newStatus) {
+            if (!db || !currentUserId) {
+                showMessageBox("L'application n'est pas prête ou l'utilisateur n'est pas authentifié.");
+                return;
+            }
+            try {
+                const challengeRef = doc(db, `artifacts/${appId}/public/data/challenges`, challengeId);
+                await updateDoc(challengeRef, {
+                    completed: newStatus,
+                    completedBy: newStatus ? currentUserId : null, // Qui a complété
+                    completedAt: newStatus ? Date.now() : null, // Quand a été complété
+                });
+            } catch (error) {
+                console.error("Erreur lors de la mise à jour du défi:", error);
+                showMessageBox("Erreur lors de la mise à jour du défi.");
+            }
+        }
+
+        // --- VALIDATION ET FORMATAGE DU NUMÉRO DE TÉLÉPHONE ---
+        // Expose la fonction à la portée globale pour l'événement oninput
+        window.formatPhoneNumber = function(input) {
+            let value = input.value.replace(/\D/g, ''); // Supprime tout ce qui n'est pas un chiffre
+            let formattedValue = '';
+            for (let i = 0; i < value.length; i++) {
+                if (i > 0 && i % 2 === 0) {
+                    formattedValue += ' ';
+                }
+                formattedValue += value[i];
+            }
+            input.value = formattedValue;
+            return formattedValue; // Retourne la valeur formatée pour le pré-remplissage
+        }
+
+        // Fonction pour enregistrer le profil utilisateur (prénom, téléphone)
+        window.saveProfile = async function() {
+            if (!db || !currentUserId) {
+                showMessageBox("L'application n'est pas prête ou l'utilisateur n'est pas authentifié.");
+                return;
+            }
+
+            const firstNameInput = document.getElementById('firstNameInput');
+            const phoneNumberInput = document.getElementById('phoneNumberInput');
+            const firstName = firstNameInput.value.trim();
+            let phoneNumber = phoneNumberInput.value.replace(/\s/g, ''); // Supprime les espaces pour la validation
+
+            if (!firstName) {
+                showMessageBox("Veuillez saisir votre prénom.");
+                return;
+            }
+            if (!/^\d{10}$/.test(phoneNumber)) {
+                showMessageBox("Le numéro de téléphone doit contenir exactement 10 chiffres (ex: 0612345678).");
+                return;
+            }
+
+            try {
+                const userProfileRef = doc(db, `artifacts/${appId}/public/data/profiles`, currentUserId);
+                await setDoc(userProfileRef, {
+                    userId: currentUserId,
+                    firstName: firstName,
+                    phoneNumber: phoneNumber,
+                    lastOnline: Date.now() // Mettre à jour aussi la dernière activité
+                }, { merge: true }); // Utiliser merge pour ne pas écraser d'autres champs si présents
+                showMessageBox("Votre profil a été enregistré avec succès !");
+            } catch (error) {
+                console.error("Erreur lors de l'enregistrement du profil:", error);
+                showMessageBox("Erreur lors de l'enregistrement de votre profil.");
+            }
+        }
+
+        // --- RENDU DES ONGLES ET MISE À JOUR DE L'AFFICHAGE ---
+
+        // Rendu du contenu de l'onglet "Se retrouver"
+        function renderSeRetrouverTab() {
+            document.getElementById('tabContent').innerHTML = `
+                <div>
+                    <h2 class="text-3xl font-semibold mb-6 text-center text-red-400">Où nous retrouver ?</h2>
+                    <div class="flex flex-col sm:flex-row gap-3 mb-6">
+                        <input
+                            type="text"
+                            id="locationMessageInput"
+                            placeholder="Votre message de localisation (ex: 'Devant la scène rouge')"
+                            class="input-field flex-grow"
+                        />
+                        <button onclick="sendLocationMessageEvent()" class="btn-primary">
+                            Envoyer
+                        </button>
+                    </div>
+                    <div id="sharedLocationsList" class="scrollable-content">
+                        <!-- Les messages seront injectés ici -->
+                    </div>
+                </div>
+            `;
+            updateLocationMessagesDisplay(); // Mettre à jour l'affichage initial
+        }
+
+        // Mettre à jour l'affichage des messages de localisation
+        function updateLocationMessagesDisplay() {
+            const listElement = document.getElementById('sharedLocationsList');
+            if (!listElement) return;
+
+            if (locationMessages.length === 0) {
+                listElement.innerHTML = `<p class="text-center text-gray-400 italic">Aucun message de localisation pour l'instant. Partagez le vôtre !</p>`;
+            } else {
+                listElement.innerHTML = locationMessages.map(loc => {
+                    const profile = userProfiles[loc.userId];
+                    const senderName = profile && profile.firstName ? escapeHTML(profile.firstName) : (loc.userId ? loc.userId.substring(0, 8) + '...' : 'Inconnu');
+                    return `
+                    <div class="card flex items-center justify-between">
+                        <div>
+                            <p class="text-lg font-medium text-white">${escapeHTML(loc.message)}</p>
+                            <p class="text-sm text-gray-400">
+                                Par <span class="font-mono text-gray-300">${senderName}</span>
+                                ${' à '}
+                                ${loc.timestamp ? new Date(loc.timestamp).toLocaleTimeString() : 'N/A'}
+                            </p>
+                        </div>
+                    </div>
+                `;
+                }).join('');
+            }
+        }
+
+        // Rendu du contenu de l'onglet "Défis"
+        function renderDefisTab() {
+            document.getElementById('tabContent').innerHTML = `
+                <div>
+                    <h2 class="text-3xl font-semibold mb-6 text-center text-red-400">Défis du Festival</h2>
+                    <div id="userGaugesContainer" class="flex justify-around items-end mb-8 flex-wrap gap-6">
+                        <!-- Les jauges individuelles seront insérées ici par updateChallengeGauges() -->
+                    </div>
+                    <div class="flex flex-col sm:flex-row gap-3 mb-6">
+                        <input
+                            type="text"
+                            id="newChallengeInput"
+                            placeholder="Ajouter un nouveau défi..."
+                            class="input-field flex-grow"
+                        />
+                        <button onclick="addChallengeEvent()" class="btn-primary">
+                            Ajouter
+                        </button>
+                    </div>
+                    <div id="challengesList" class="scrollable-content">
+                        <!-- Les défis seront injectés ici -->
+                    </div>
+                </div>
+            `;
+            updateChallengesDisplay(); // Mettre à jour l'affichage initial
+            updateChallengeGauges(); // Initialiser les jauges
+        }
+
+        // Mettre à jour l'affichage des défis
+        function updateChallengesDisplay() {
+            const listElement = document.getElementById('challengesList');
+            if (!listElement) return;
+
+            if (challenges.length === 0) {
+                listElement.innerHTML = `<p class="text-center text-gray-400 italic">Aucun défi ajouté pour l'instant.</p>`;
+            } else {
+                listElement.innerHTML = challenges.map(challenge => {
+                    const completedByName = challenge.completedBy && userProfiles[challenge.completedBy] ? escapeHTML(userProfiles[challenge.completedBy].firstName) : 'Inconnu';
+                    return `
+                    <div class="card flex items-center justify-between">
+                        <label class="flex items-center cursor-pointer flex-grow">
+                            <input
+                                type="checkbox"
+                                ${challenge.completed ? 'checked' : ''}
+                                onchange="toggleChallengeCompletionEvent('${challenge.id}', this.checked)"
+                                class="form-checkbox h-6 w-6 text-red-600 rounded mr-3 bg-gray-700 border-gray-600 checked:bg-red-600 focus:ring-red-500"
+                            />
+                            <span class="text-lg ${challenge.completed ? 'line-through text-gray-500' : 'text-white'}">
+                                ${escapeHTML(challenge.text)}
+                            </span>
+                        </label>
+                        ${challenge.completed ? `<span class="text-sm text-green-400 ml-2">Completé par ${completedByName}</span>` : ''}
+                    </div>
+                `;
+                }).join('');
+            }
+        }
+
+        // --- Fonctions de mise à jour des jauges de défis ---
+        function updateChallengeGauges() {
+            const gaugesContainer = document.getElementById('userGaugesContainer');
+            if (!gaugesContainer) return;
+
+            // Filtrer les profils pour n'afficher que ceux qui ont un prénom
+            const identifiableUsers = Object.values(userProfiles).filter(p => p.firstName);
+
+            if (identifiableUsers.length === 0) {
+                gaugesContainer.innerHTML = `<p class="text-center text-gray-400 italic">Connectez-vous pour voir la progression des défis des joueurs !</p>`;
+                return;
+            }
+
+            gaugesContainer.innerHTML = ''; // Effacer les jauges précédentes
+
+            const usersToDisplay = identifiableUsers.sort((a, b) => {
+                // Tri pour que l'utilisateur actuel apparaisse en premier, puis les autres par prénom
+                if (a.userId === currentUserId) return -1;
+                if (b.userId === currentUserId) return 1;
+                return a.firstName.localeCompare(b.firstName);
+            }).slice(0, 2); // Limiter à 2 utilisateurs pour les jauges
+
+            // Pour les jauges circulaires
+            const radius = 45; // Rayon du cercle
+            const circumference = 2 * Math.PI * radius; // Circonférence du cercle
+
+
+            usersToDisplay.forEach(profile => {
+                const userIdToDisplay = profile.userId;
+                const userCompletedChallenges = challenges.filter(c => c.completedBy === userIdToDisplay).length;
+                const totalChallengesExisting = challenges.length;
+                // Le pourcentage est basé sur les défis complétés par ce joueur par rapport au total des défis existants.
+                const completionPercentage = totalChallengesExisting > 0 ? (userCompletedChallenges / totalChallengesExisting) * 100 : 0; // 0.0 to 100.0
+
+                const userName = escapeHTML(profile.firstName);
+
+                // Calcul pour le cercle
+                const strokeDashoffset = circumference - (completionPercentage / 100) * circumference;
+
+                const gaugeHtml = `
+                    <div class="gauge-item-wrapper">
+                        <svg class="gauge-svg" viewBox="0 0 100 100">
+                            <circle cx="50" cy="50" r="${radius}" class="gauge-bg"></circle>
+                            <circle cx="50" cy="50" r="${radius}" class="gauge-progress"
+                                style="stroke-dasharray: ${circumference}; stroke-dashoffset: ${strokeDashoffset};"></circle>
+                        </svg>
+                        <div class="gauge-text-overlay">${userCompletedChallenges}</div>
+                        <div class="gauge-label-overlay">${userName}</div>
+                    </div>
+                `;
+                gaugesContainer.innerHTML += gaugeHtml;
+            });
+        }
+
+        // Rendu du contenu de l'onglet "Se connecter"
+        function renderConnectTab() {
+            document.getElementById('tabContent').innerHTML = `
+                <div>
+                    <h2 class="text-3xl font-semibold mb-6 text-center text-red-400">Mon Profil</h2>
+                    <p class="text-center text-gray-400 mb-4">
+                        Enregistrez votre prénom et numéro de téléphone pour que vos amis vous reconnaissent.
+                    </p>
+                    <div class="flex flex-col gap-4 mb-6">
+                        <input
+                            type="text"
+                            id="firstNameInput"
+                            placeholder="Votre prénom"
+                            class="input-field"
+                        />
+                        <input
+                            type="tel"
+                            id="phoneNumberInput"
+                            placeholder="Votre numéro de téléphone"
+                            class="input-field"
+                            oninput="formatPhoneNumber(this)"
+                            maxlength="14" />
+                        <button onclick="saveProfile()" class="btn-primary">
+                            Enregistrer le profil
+                        </button>
+                    </div>
+                    <div class="text-center text-gray-500 mt-6 text-sm">
+                        Votre ID unique: <span class="font-mono bg-gray-700 rounded px-2 py-1">${currentUserId ? currentUserId : 'Chargement...'}</span>
+                    </div>
+                </div>
+            `;
+            // Pré-remplir les champs si le profil existe déjà
+            if (currentUserId && userProfiles[currentUserId]) {
+                document.getElementById('firstNameInput').value = userProfiles[currentUserId].firstName || '';
+                // Formater le numéro de téléphone lors du pré-remplissage
+                const rawPhoneNumber = userProfiles[currentUserId].phoneNumber || '';
+                document.getElementById('phoneNumberInput').value = window.formatPhoneNumber({ value: rawPhoneNumber });
+            }
+        }
+
+        // Mettre à jour l'affichage du compteur d'utilisateurs en ligne
+        function updateOnlineUsersCountDisplay() {
+            const displayElement = document.getElementById('onlineUsersCount');
+            if (displayElement) {
+                displayElement.textContent = `En ligne: ${onlineUsersCount}`;
+            }
+        }
+
+        // --- Fonctions de Compte à Rebours ---
+        function startCountdown() {
+            if (countdownInterval) {
+                clearInterval(countdownInterval); // S'assurer qu'il n'y a qu'un seul intervalle actif
+            }
+            countdownInterval = setInterval(updateCountdown, 1000); // Mettre à jour chaque seconde
+            updateCountdown(); // Appeler une fois immédiatement pour éviter le délai initial
+        }
+
+        function updateCountdown() {
+            const now = new Date().getTime();
+            const countdownText = document.querySelector('#countdownDisplay .countdown-text');
+            const countdownLabel = document.querySelector('#countdownDisplay .countdown-label');
+
+
+            if (!countdownText || !countdownLabel) {
+                clearInterval(countdownInterval); // Arrêter si l'élément n'existe plus
+                return;
+            }
+
+            if (now < DEFQON_START_DATE.getTime()) {
+                // Avant le début du festival : Afficher le compte à rebours
+                const distance = DEFQON_START_DATE.getTime() - now;
+
+                const days = Math.floor(distance / (1000 * 60 * 60 * 24));
+                const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+                const seconds = Math.floor((distance % (1000 * 60)) / 1000);
+
+                countdownText.innerHTML = `${days}j ${hours}h ${minutes}m ${seconds}s`;
+                // Vider le label
+                countdownLabel.textContent = '';
+                countdownLabel.classList.remove('visible'); // Cacher le label
+
+
+            } else if (now >= DEFQON_START_DATE.getTime() && now <= DEFQON_END_DATE.getTime()) {
+                // Pendant le festival : Afficher Jour 1, Jour 2, etc.
+                const oneDay = 1000 * 60 * 60 * 24;
+                const diffDays = Math.floor((now - DEFQON_START_DATE.getTime()) / oneDay);
+                let festivalDay = diffDays + 1; // Jour 1 = diff 0, Jour 2 = diff 1, etc.
+
+                if (festivalDay > 4) { // Assurez-vous de ne pas dépasser Jour 4 si le festival est fini
+                    countdownText.innerHTML = "Terminé !";
+                    countdownLabel.textContent = "Le festival Defqon 1 est terminé pour cette année !";
+                    countdownLabel.classList.add('visible'); // Afficher le label
+                    countdownLabel.classList.add('font-bold'); // Rendre le label en gras
+                    clearInterval(countdownInterval);
+                } else {
+                    countdownText.innerHTML = `Jour ${festivalDay}`;
+                    countdownLabel.textContent = `Profitez de la Defqon 1 !`;
+                    countdownLabel.classList.add('visible'); // Afficher le label
+                    countdownLabel.classList.add('font-bold'); // Rendre le label en gras
+                }
+            } else {
+                // Après la fin du festival
+                countdownText.innerHTML = "Terminé !";
+                countdownLabel.textContent = "Le festival Defqon 1 est terminé pour cette année !";
+                countdownLabel.classList.add('visible'); // Afficher le label
+                countdownLabel.classList.add('font-bold'); // Rendre le label en gras
+                clearInterval(countdownInterval); // Arrêter le compte à rebours
+            }
+        }
+
+        // Fonction pour activer un onglet
+        // Expose la fonction à la portée globale
+        window.setActiveTab = function(tabName) {
+            // Mettre à jour les classes des boutons
+            document.querySelectorAll('.tab-button').forEach(button => {
+                button.classList.remove('active');
+                // Retirer explicitement la classe scale-105 pour éviter les résidus d'animation
+                button.classList.remove('scale-105');
+            });
+            // Pour le bouton Se connecter (séparé)
+            const tabConnectButton = document.getElementById('tabConnect');
+            if (tabConnectButton) {
+                tabConnectButton.classList.remove('active');
+                tabConnectButton.classList.remove('scale-105');
+            }
+
+
+            // Assurez-vous que l'élément existe avant de tenter d'ajouter la classe 'active'
+            const targetButton = document.getElementById('tab' + tabName.charAt(0).toUpperCase() + tabName.slice(1));
+            // Le bouton 'Se connecter' est séparé, donc géré à part
+            if (targetButton) {
+                targetButton.classList.add('active');
+            } else if (tabName === 'connect' && tabConnectButton) {
+                tabConnectButton.classList.add('active');
+            }
+
+
+            // Afficher le contenu de l'onglet
+            switch (tabName) {
+                case 'seRetrouver':
+                    renderSeRetrouverTab();
+                    break;
+                case 'defis':
+                    renderDefisTab();
+                    break;
+                case 'connect':
+                    renderConnectTab();
+                    break;
+                default:
+                    renderSeRetrouverTab(); // Revenir à l'onglet par défaut si un onglet invalide est demandé
+            }
+        }
+
+        // --- INITIALISATION DE L'APPLICATION (après chargement du DOM) ---
+        // Le `DOMContentLoaded` est maintenant géré dans `onAuthStateChanged` pour s'assurer
+        // que l'authentification Firebase est prête avant de rendre le contenu initial.
+        // Assurez-vous d'arrêter le compte à rebours lorsque la page est déchargée
+        window.addEventListener('beforeunload', () => {
+            if (countdownInterval) {
+                clearInterval(countdownInterval);
+            }
+        });
+    </script>
+</body>
+</html>
