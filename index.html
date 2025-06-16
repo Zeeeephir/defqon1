@@ -170,7 +170,7 @@
         }
         .countdown-box .countdown-text {
             /* Utilisation d'une taille de police ajustée pour remplir l'espace sans déborder */
-            font-size: 2.2rem; /* Taille de base ajustée */
+            font-size: 1.8rem; /* Taille de base ajustée */
             @apply text-white font-bold;
             text-shadow: 0 0 20px rgba(255, 255, 255, 0.9), 0 0 30px rgba(255, 0, 0, 0.7);
             white-space: nowrap; /* Empêche le retour à la ligne */
@@ -187,17 +187,17 @@
         /* Ajustements responsifs pour la taille de la police du minuteur */
         @media (min-width: 640px) { /* sm */
             .countdown-box .countdown-text {
-                font-size: 2.8rem;
+                font-size: 2.2rem;
             }
         }
         @media (min-width: 768px) { /* md */
             .countdown-box .countdown-text {
-                font-size: 3.5rem;
+                font-size: 2.8rem;
             }
         }
         @media (min-width: 1024px) { /* lg */
             .countdown-box .countdown-text {
-                font-size: 4.5rem;
+                font-size: 3.5rem;
             }
         }
 
@@ -267,9 +267,31 @@
         // are provided by the Canvas environment.
         // We use default values in case they are not defined (e.g., for local testing).
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-defqon-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-        // Correct usage of __initial_auth_token for initialization
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let firebaseConfig = {};
+        // Vérifie si __firebase_config est défini (utilisé par Canvas)
+        if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+            try {
+                firebaseConfig = JSON.parse(__firebase_config);
+            } catch (e) {
+                console.error("Erreur lors de l'analyse de __firebase_config:", e);
+                // Fallback à une configuration vide si l'analyse échoue
+            }
+        } else {
+            // Si __firebase_config n'est pas défini (par exemple, sur GitHub),
+            // l'utilisateur DOIT remplir cette configuration manuellement.
+            console.warn("Attention: __firebase_config n'est pas défini. Si vous exécutez cette application en dehors de l'environnement Canvas, veuillez remplacer 'YOUR_FIREBASE_CONFIG_HERE' par votre configuration Firebase réelle.");
+            firebaseConfig = {
+                apiKey: "YOUR_FIREBASE_API_KEY",
+                authDomain: "YOUR_FIREBASE_AUTH_DOMAIN",
+                projectId: "YOUR_FIREBASE_PROJECT_ID",
+                storageBucket: "YOUR_FIREBASE_STORAGE_BUCKET",
+                messagingSenderId: "YOUR_FIREBASE_MESSAGING_SENDER_ID",
+                appId: "YOUR_FIREBASE_APP_ID",
+                // measurementId: "YOUR_FIREBASE_MEASUREMENT_ID" // Optionnel, si vous utilisez Google Analytics
+            };
+        }
 
         let currentUserId = null;
         let firebaseApp;
