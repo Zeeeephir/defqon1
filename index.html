@@ -299,6 +299,7 @@
         let auth;
         let isAuthReady = false; // Indique si l'authentification est prête
         let hasUserProfile = false; // Nouveau drapeau pour savoir si l'utilisateur a un profil enregistré
+        let onlineUsersCount = 0; // Initialisation de la variable pour le nombre d'utilisateurs en ligne
 
         // Constants for Defqon 1 countdown
         const DEFQON_START_DATE = new Date('2025-06-26T12:00:00'); // June 26, 2025, 12:00 PM
@@ -349,40 +350,63 @@
         }
 
         // --- FIREBASE INITIALIZATION ---
-        try {
-            firebaseApp = initializeApp(firebaseConfig);
-            db = getFirestore(firebaseApp);
-            auth = getAuth(firebaseApp);
+        (async () => { // Utilisez une IIFE pour les opérations asynchrones au chargement du script
+            try {
+                firebaseApp = initializeApp(firebaseConfig);
+                db = getFirestore(firebaseApp);
+                auth = getAuth(firebaseApp);
 
-            // Manage authentication state
-            onAuthStateChanged(auth, async (user) => {
-                if (user) {
-                    currentUserId = user.uid;
-                    // Tenter de récupérer le profil de l'utilisateur après authentification
-                    const userProfileRef = doc(db, `artifacts/${appId}/public/data/profiles`, currentUserId);
-                    const profileSnap = await getDoc(userProfileRef);
-                    hasUserProfile = profileSnap.exists() && profileSnap.data().firstName; // Vérifier si le profil existe et a un prénom
-                    
-                    // Mettre à jour le bouton de connexion/profil en fonction de l'état
+                // Set up the authentication state listener FIRST
+                onAuthStateChanged(auth, async (user) => {
+                    if (user) {
+                        currentUserId = user.uid;
+                        const userProfileRef = doc(db, `artifacts/${appId}/public/data/profiles`, currentUserId);
+                        const profileSnap = await getDoc(userProfileRef);
+                        hasUserProfile = profileSnap.exists() && profileSnap.data().firstName;
+                        console.log("ID utilisateur défini sur :", currentUserId);
+                    } else {
+                        // No user is authenticated, attempt to sign in (anonymously or with custom token)
+                        console.log("Aucun utilisateur authentifié. Tentative de connexion...");
+                        try {
+                            if (initialAuthToken) {
+                                await signInWithCustomToken(auth, initialAuthToken);
+                                console.log("Connecté avec jeton personnalisé via onAuthStateChanged fallback.");
+                            } else {
+                                await signInAnonymously(auth);
+                                console.log("Connecté anonymement via onAuthStateChanged fallback.");
+                            }
+                            // If sign-in succeeds, onAuthStateChanged will re-fire with the user object.
+                            // So, we don't call setupFirestoreListeners here directly.
+                        } catch (signInError) {
+                            console.error("Erreur de connexion anonyme ou par jeton personnalisé :", signInError);
+                            showMessageBox("Impossible de se connecter au service d'authentification. Certaines fonctionnalités peuvent être limitées.");
+                            currentUserId = generateUUID(); // Fallback local ID if auth fails
+                        }
+                        hasUserProfile = false; // Reset profile status
+                    }
+
+                    // This part ensures that Firebase is ready AND we have a currentUserId (even a local fallback)
+                    // before proceeding with setting up listeners and UI.
+                    isAuthReady = true; // Authentication state is resolved for this cycle
                     updateConnectButtonState();
-                } else {
-                    currentUserId = generateUUID(); // Générer un ID si non authentifié
-                    hasUserProfile = false;
-                    updateConnectButtonState(); // Mettre à jour le bouton
-                }
-                isAuthReady = true; // Marquer l'authentification comme prête
-                setupFirestoreListeners(); // Configurer les écouteurs Firestore
-                window.setActiveTab('accueil'); // Afficher l'onglet par défaut
-            });
+                    // Ensure db and auth are initialized and currentUserId is set before setting up listeners
+                    if (db && auth && currentUserId) { 
+                         setupFirestoreListeners();
+                    } else {
+                         console.warn("Firestore listeners non configurés car l'authentification a échoué ou l'ID utilisateur est manquant.");
+                    }
+                    window.setActiveTab('accueil'); // Always show the home tab initially
+                });
 
-        } catch (error) {
-            console.error("Erreur lors de l'initialisation de Firebase:", error);
-            showMessageBox("Erreur critique: Impossible d'initialiser l'application. Vérifiez la configuration Firebase.");
-            db = null;
-            auth = null;
-            isAuthReady = true;
-            window.setActiveTab('accueil');
-        }
+            } catch (error) {
+                console.error("Erreur lors de l'initialisation de Firebase :", error);
+                showMessageBox("Erreur critique : Impossible d'initialiser l'application. Veuillez vérifier la configuration Firebase.");
+                db = null;
+                auth = null;
+                isAuthReady = true;
+                window.setActiveTab('accueil');
+            }
+        })(); // Fin de l'IIFE
 
 
         // --- FIRESTORE OPERATIONS ---
@@ -874,6 +898,69 @@
             });
         }
 
+        // Rendu du contenu de l'onglet "Tchat"
+        function renderTchatTab() {
+            document.getElementById('tabContent').innerHTML = `
+                <div>
+                    <h2 class="text-3xl font-semibold mb-6 text-center text-red-400">Tchat Global</h2>
+                    <div id="chatMessagesContainer" class="scrollable-content h-96 bg-gray-800 rounded-lg p-4 mb-4 flex flex-col-reverse">
+                        <!-- Les messages de chat seront injectés ici (en ordre inverse pour le défilement automatique) -->
+                    </div>
+                    <div class="flex flex-col sm:flex-row gap-3">
+                        <input
+                            type="text"
+                            id="chatMessageInput"
+                            placeholder="Écrivez votre message..."
+                            class="input-field flex-grow"
+                        />
+                        <button onclick="sendChatMessage()" class="btn-primary">
+                            Envoyer
+                        </button>
+                    </div>
+                    ${!hasUserProfile ? `<p class="text-center text-red-400 mt-4">Veuillez vous enregistrer (onglet S'enregistrer) pour pouvoir envoyer des messages.</p>` : ''}
+                </div>
+            `;
+            updateChatDisplay(); // Mettre à jour l'affichage du chat après le rendu de l'onglet
+            // Faire défiler vers le bas après le rendu initial
+            const chatMessagesContainer = document.getElementById('chatMessagesContainer');
+            if (chatMessagesContainer) {
+                chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight;
+            }
+        }
+
+        // Mettre à jour l'affichage des messages de chat
+        function updateChatDisplay() {
+            const chatMessagesContainer = document.getElementById('chatMessagesContainer');
+            if (!chatMessagesContainer) return;
+
+            // Créer les messages en ordre normal, puis inverser pour flex-direction: column-reverse
+            const messagesHtml = chatMessages.map(msg => {
+                const profile = userProfiles[msg.userId];
+                const senderName = profile && profile.firstName ? escapeHTML(profile.firstName) : (msg.userId ? msg.userId.substring(0, 8) + '...' : 'Inconnu');
+                const isCurrentUser = msg.userId === currentUserId;
+                const messageClass = isCurrentUser ? 'bg-red-700 self-end' : 'bg-gray-700 self-start';
+                const textColorClass = isCurrentUser ? 'text-white' : 'text-gray-200';
+
+                return `
+                    <div class="flex flex-col mb-2 p-2 rounded-lg max-w-[80%] ${messageClass}">
+                        <span class="font-bold text-sm ${textColorClass}">${senderName}</span>
+                        <p class="text-base ${textColorClass}">${escapeHTML(msg.message)}</p>
+                        <span class="text-xs text-gray-300 self-end mt-1">${new Date(msg.timestamp).toLocaleTimeString('fr-FR')}</span>
+                    </div>
+                `;
+            }).join('');
+
+            chatMessagesContainer.innerHTML = messagesHtml;
+
+            // Défiler automatiquement vers le bas si l'utilisateur est déjà tout en bas
+            // ou si c'est son propre message
+            const shouldScroll = chatMessagesContainer.scrollTop + chatMessagesContainer.clientHeight >= chatMessagesContainer.scrollHeight - 50; // Tolérance de 50px
+            if (shouldScroll) {
+                chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight;
+            }
+        }
+
+
         // Rendu du contenu de l'onglet "S'enregistrer / Mon Profil"
         function renderProfileTab() {
             const tabContentElement = document.getElementById('tabContent');
@@ -1140,7 +1227,7 @@
                     renderObjectifsTab();
                     break;
                 case 'tchat':
-                    renderTchatTab();
+                    renderTchatTab(); // Appel à la fonction maintenant définie
                     break;
                 case 'connect':
                     renderProfileTab(); // Appel à la nouvelle fonction pour la gestion du profil/enregistrement
