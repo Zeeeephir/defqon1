@@ -374,7 +374,7 @@
                 setupFirestoreListeners();
                 // Display the default tab ('Accueil') once authentication and listeners are ready
                 window.setActiveTab('accueil');
-                startCountdown(); // Start the countdown globally
+                // startCountdown(); // Removed global call here, as it's now handled by renderAccueilTab()
             });
 
         } catch (error) {
@@ -404,7 +404,6 @@
             onSnapshot(locationsColRef, (snapshot) => {
                 const fetchedLocations = [];
                 snapshot.forEach(doc => {
-                    // Firestore stores document IDs, and we want to include them
                     fetchedLocations.push({ id: doc.id, ...doc.data() });
                 });
                 // Sort by timestamp to display the most recent first
@@ -612,7 +611,7 @@
                 </div>
             `;
             updateOnlineUsersCountDisplay(); // Update display for online users
-            updateCountdown(); // Update countdown display
+            startCountdown(); // Call startCountdown here to ensure it runs when tab is active
         }
 
         // Render the content of the "Se retrouver" tab
@@ -915,7 +914,9 @@
 
 
             if (!countdownText || !countdownLabel) {
-                clearInterval(countdownInterval); // Stop if the element no longer exists
+                // If elements are not found, clear the interval to prevent errors
+                clearInterval(countdownInterval); 
+                countdownInterval = null; // Reset interval ID
                 return;
             }
 
@@ -946,6 +947,7 @@
                     countdownLabel.classList.add('visible'); // Show the label
                     countdownLabel.classList.add('font-bold'); // Make the label bold
                     clearInterval(countdownInterval);
+                    countdownInterval = null; // Reset interval ID
                 } else {
                     countdownText.innerHTML = `Jour ${festivalDay}`;
                     countdownLabel.textContent = `Profitez de la Defqon 1 !`;
@@ -959,12 +961,19 @@
                 countdownLabel.classList.add('visible'); // Show the label
                 countdownLabel.classList.add('font-bold'); // Make the label bold
                 clearInterval(countdownInterval); // Stop the countdown
+                countdownInterval = null; // Reset interval ID
             }
         }
 
         // Function to activate a tab
         // Expose the function to the global scope
         window.setActiveTab = function(tabName) {
+            // Clear any active countdown interval when switching tabs
+            if (countdownInterval) {
+                clearInterval(countdownInterval);
+                countdownInterval = null; // Reset interval ID
+            }
+
             // Mettre à jour les classes des boutons
             document.querySelectorAll('.tab-button').forEach(button => {
                 button.classList.remove('active');
