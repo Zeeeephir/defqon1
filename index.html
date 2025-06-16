@@ -22,7 +22,7 @@
         }
         .tab-button.active {
             /* Changement: fond transparent, bordure inférieure rouge subtile, texte rougeoyant */
-            @apply bg-transparent text-red-400 scale-105; /* Texte plus clair pour la lueur */
+            @apply bg-transparent text-red-400 scale-105; 
             border: none; /* Pas de bordure pleine */
             border-bottom: 2px solid #dc2626; /* Bordure inférieure rouge */
             box-shadow: none; /* Pas d'ombre de boîte pour éviter l'effet rectangulaire */
@@ -233,10 +233,13 @@
             <button id="tabObjectifs" class="tab-button" onclick="setActiveTab('objectifs')">
                 Objectifs
             </button>
+            <button id="tabTchat" class="tab-button" onclick="setActiveTab('tchat')">
+                Tchat
+            </button>
         </div>
-        <!-- Bouton "Se connecter" séparé -->
+        <!-- Bouton "Se connecter" / "Mon Profil" -->
         <button id="tabConnect" class="px-4 py-2 rounded-md bg-red-700 text-white font-semibold transition-all shadow-lg hover:bg-red-800 hover:scale-105 active:scale-95 transform" onclick="setActiveTab('connect')">
-            Se connecter
+            S'enregistrer
         </button>
         <!-- Nouveau bouton "NoisyNeighbors" -->
         <button id="tabNoisyNeighbors" class="px-4 py-2 rounded-md bg-purple-700 text-white font-semibold transition-all shadow-lg hover:bg-purple-800 hover:scale-105 active:scale-95 transform" onclick="setActiveTab('noisyNeighbors')">
@@ -259,8 +262,8 @@
     <script type="module">
         // Importation des modules Firebase nécessaires via CDN
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, onSnapshot, collection, addDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot, collection, addDoc, updateDoc, query, orderBy, limit, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // --- GLOBAL CONSTANTS AND INITIALIZATION ---
         // Global variables __app_id, __firebase_config and __initial_auth_token
@@ -276,23 +279,17 @@
                 firebaseConfig = JSON.parse(__firebase_config);
             } catch (e) {
                 console.error("Erreur lors de l'analyse de __firebase_config:", e);
-                // Fallback à une configuration vide si l'analyse échoue
             }
         } else {
-            // Si __firebase_config n'est pas défini (par exemple, sur GitHub),
-            // l'utilisateur DOIT remplir cette configuration manuellement.
             console.warn("Attention: __firebase_config n'est pas défini. Si vous exécutez cette application en dehors de l'environnement Canvas, veuillez remplacer 'YOUR_FIREBASE_CONFIG_HERE' par votre configuration Firebase réelle.");
             firebaseConfig = {
-                // ATTENTION: Remplacez "YOUR_FIREBASE_API_KEY" ci-dessous par la VRAIE clé API de votre projet Firebase.
-                // Vous la trouverez dans la console Firebase -> Paramètres du projet -> Vos applications (Web)
-                apiKey: "AIzaSyAb5BBuf3qfFFMpXTwIp3XjBCf_VIIBsWo",
+                apiKey: "AIzaSyAb5BBuf3qfFFMpXTwIp3XjBCf_VIIBsWo", 
                 authDomain: "defqon1-9f38d.firebaseapp.com",
                 projectId: "defqon1-9f38d",
                 storageBucket: "defqon1-9f38d.firebasestorage.app",
                 messagingSenderId: "123287772879",
                 appId: "1:123287772879:web:a76c3c0de2a47b1ac5a1ba",
                 measurementId: "G-40W1R1M7CC"
-                // measurementId: "YOUR_FIREBASE_MEASUREMENT_ID" // Optionnel, si vous utilisez Google Analytics
                 };
         }
 
@@ -300,7 +297,8 @@
         let firebaseApp;
         let db;
         let auth;
-        let isAuthReady = false; // Indicates if authentication is ready
+        let isAuthReady = false; // Indique si l'authentification est prête
+        let hasUserProfile = false; // Nouveau drapeau pour savoir si l'utilisateur a un profil enregistré
 
         // Constants for Defqon 1 countdown
         const DEFQON_START_DATE = new Date('2025-06-26T12:00:00'); // June 26, 2025, 12:00 PM
@@ -310,6 +308,13 @@
         // --- URLS POUR LES QR CODES ---
         const INSTAGRAM_URL = "https://www.instagram.com/noisyneighborsmusic?igsh=MW5rZzJ4ajBpdDVvMA%3D%3D&utm_source=qr";
         const SOUNDCLOUD_URL = "https://soundcloud.com/noisyneighborsmusics?utm_source=clipboard&utm_medium=text&utm_campaign=social_sharing";
+
+        // --- VARIABLES GLOBALES POUR LES DONNÉES FIRESTORE ---
+        let locationMessages = []; // Tableau local pour stocker les messages de localisation (texte)
+        let chatMessages = []; // Tableau local pour stocker les messages de chat
+        let challenges = []; // Tableau local pour stocker les défis (maintenant appelés objectifs)
+        let userProfiles = {}; // Stocke les profils des utilisateurs
+
 
         // --- UTILITY FUNCTIONS ---
 
@@ -353,122 +358,129 @@
             onAuthStateChanged(auth, async (user) => {
                 if (user) {
                     currentUserId = user.uid;
+                    // Tenter de récupérer le profil de l'utilisateur après authentification
+                    const userProfileRef = doc(db, `artifacts/${appId}/public/data/profiles`, currentUserId);
+                    const profileSnap = await getDoc(userProfileRef);
+                    hasUserProfile = profileSnap.exists() && profileSnap.data().firstName; // Vérifier si le profil existe et a un prénom
+                    
+                    // Mettre à jour le bouton de connexion/profil en fonction de l'état
+                    updateConnectButtonState();
                 } else {
-                    // If no user is logged in, try to sign in anonymously
-                    try {
-                        if (initialAuthToken) {
-                            await signInWithCustomToken(auth, initialAuthToken);
-                        } else {
-                            await signInAnonymously(auth);
-                        }
-                        // Ensure there's a userId after authentication
-                        currentUserId = auth.currentUser?.uid || generateUUID();
-                    } catch (error) {
-                        console.error("Erreur lors de la connexion anonyme ou avec jeton personnalisé:", error);
-                        showMessageBox("Erreur de connexion : " + error.message);
-                        currentUserId = generateUUID(); // Fallback to a random ID if auth fails
-                    }
+                    currentUserId = generateUUID(); // Générer un ID si non authentifié
+                    hasUserProfile = false;
+                    updateConnectButtonState(); // Mettre à jour le bouton
                 }
-                isAuthReady = true; // Mark authentication as ready
-                // Once authentication is ready, we can start listening to data
-                setupFirestoreListeners();
-                // Display the default tab ('Accueil') once authentication and listeners are ready
-                window.setActiveTab('accueil');
-                // startCountdown(); // Removed global call here, as it's now handled by renderAccueilTab()
+                isAuthReady = true; // Marquer l'authentification comme prête
+                setupFirestoreListeners(); // Configurer les écouteurs Firestore
+                window.setActiveTab('accueil'); // Afficher l'onglet par défaut
             });
 
         } catch (error) {
             console.error("Erreur lors de l'initialisation de Firebase:", error);
             showMessageBox("Erreur critique: Impossible d'initialiser l'application. Vérifiez la configuration Firebase.");
-            // Prevent the app from crashing if Firebase is not configured
             db = null;
             auth = null;
-            isAuthReady = true; // Mark as ready even without Firebase to avoid total blocking
-            window.setActiveTab('accueil'); // Still attempt to show 'Accueil'
+            isAuthReady = true;
+            window.setActiveTab('accueil');
         }
 
 
         // --- FIRESTORE OPERATIONS ---
 
-        let locationMessages = []; // Local array to store location messages
-        let challenges = []; // Local array to store challenges (now called objectifs)
-        let userProfiles = {}; // Stores user profiles
-        let onlineUsersCount = 0; // Counter for online users
-
         // Set up Firestore listeners once authentication is ready
         function setupFirestoreListeners() {
             if (!db || !isAuthReady) return; // Ensure Firebase is initialized and auth is ready
 
-            // Listener for location messages
+            // Écouteur pour les messages de localisation (texte)
             const locationsColRef = collection(db, `artifacts/${appId}/public/data/locations`);
             onSnapshot(locationsColRef, (snapshot) => {
                 const fetchedLocations = [];
                 snapshot.forEach(doc => {
                     fetchedLocations.push({ id: doc.id, ...doc.data() });
                 });
-                // Sort by timestamp to display the most recent first
                 fetchedLocations.sort((a, b) => b.timestamp - a.timestamp);
-                locationMessages = fetchedLocations; // Update local array
-                updateLocationMessagesDisplay(); // Update display
+                locationMessages = fetchedLocations;
+                updateLocationMessagesDisplay();
             }, (error) => {
                 console.error("Erreur lors de l'écoute des messages de localisation:", error);
                 showMessageBox("Impossible de charger les messages de localisation en temps réel.");
             });
 
-            // Listener for challenges (now objectifs)
-            const challengesColRef = collection(db, `artifacts/${appId}/public/data/challenges`); // Collection name remains 'challenges' in Firestore
+            // Écouteur pour les défis (maintenant objectifs)
+            const challengesColRef = collection(db, `artifacts/${appId}/public/data/challenges`);
             onSnapshot(challengesColRef, (snapshot) => {
                 const fetchedChallenges = [];
                 snapshot.forEach(doc => {
                     fetchedChallenges.push({ id: doc.id, ...doc.data() });
                 });
-                challenges = fetchedChallenges; // Update local array
-                updateChallengesDisplay(); // Update display for objectifs
-                updateChallengeGauges(); // Update gauges for objectifs
+                challenges = fetchedChallenges;
+                updateChallengesDisplay();
+                updateChallengeGauges();
             }, (error) => {
                 console.error("Erreur lors de l'écoute des objectifs:", error);
                 showMessageBox("Impossible de charger les objectifs en temps réel.");
             });
 
-            // Listener for user profiles and online presence
+            // Écouteur pour les messages de chat
+            const chatColRef = query(collection(db, `artifacts/${appId}/public/data/chatMessages`), orderBy('timestamp', 'asc'), limit(50)); // Limite à 50 derniers messages
+            onSnapshot(chatColRef, (snapshot) => {
+                const fetchedMessages = [];
+                snapshot.forEach(doc => {
+                    fetchedMessages.push({ id: doc.id, ...doc.data() });
+                });
+                chatMessages = fetchedMessages;
+                updateChatDisplay(); // Mettre à jour l'affichage du chat
+            }, (error) => {
+                console.error("Erreur lors de l'écoute des messages de chat:", error);
+                showMessageBox("Impossible de charger les messages de chat en temps réel.");
+            });
+
+            // Écouteur pour les profils utilisateurs et la présence en ligne
             const profilesColRef = collection(db, `artifacts/${appId}/public/data/profiles`);
             onSnapshot(profilesColRef, (snapshot) => {
                 const fetchedProfiles = {};
                 let count = 0;
                 const now = Date.now();
-                const onlineThreshold = now - 60000; // 60 seconds to be considered "online"
-
+                
                 snapshot.forEach(doc => {
                     const profile = { id: doc.id, ...doc.data() };
                     fetchedProfiles[doc.id] = profile;
-                    if (profile.lastOnline && profile.lastOnline > onlineThreshold) {
+                    if (profile.lastOnline && profile.lastOnline > (now - 60000)) { // 60s pour le compteur "En ligne"
                         count++;
                     }
                 });
-                userProfiles = fetchedProfiles; // Update profile cache
-                onlineUsersCount = count; // Update counter
-                updateOnlineUsersCountDisplay(); // Update counter display
-                updateChallengeGauges(); // Update challenge gauges (for usernames)
+                userProfiles = fetchedProfiles; // Mettre à jour le cache des profils
+                onlineUsersCount = count; // Mettre à jour le compteur
+
+                // Mettre à jour hasUserProfile basé sur le profil actuel
+                hasUserProfile = userProfiles[currentUserId] && userProfiles[currentUserId].firstName;
+                updateConnectButtonState(); // Mettre à jour le bouton de connexion/profil
+
+                updateOnlineUsersCountDisplay(); // Mettre à jour l'affichage du compteur
+                updateChallengeGauges(); // Mettre à jour les jauges des objectifs
+                updateChatDisplay(); // S'assurer que les noms d'utilisateur sont à jour dans le chat
             }, (error) => {
                 console.error("Erreur lors de l'écoute des profils utilisateurs:", error);
                 showMessageBox("Impossible de charger les profils utilisateurs.");
             });
 
-            // Periodic update of the current user's "lastOnline" status
+            // Mise à jour périodique du statut "lastOnline" de l'utilisateur actuel
             setInterval(async () => {
                 if (db && currentUserId && isAuthReady) {
                     try {
                         const userProfileRef = doc(db, `artifacts/${appId}/public/data/profiles`, currentUserId);
-                        await setDoc(userProfileRef, { lastOnline: Date.now() }, { merge: true }); // Only update lastOnline
+                        await setDoc(userProfileRef, { lastOnline: Date.now() }, { merge: true }); 
                     }
                      catch (error) {
                         console.error("Erreur lors de la mise à jour du statut en ligne:", error);
                     }
                 }
-            }, 30000); // Update every 30 seconds
+            }, 30000); // Mettre à jour toutes les 30 secondes
         }
 
-        // Function to send the location message to Firestore
+        // --- FONCTIONS D'ENVOI DE DONNÉES À FIRESTORE ---
+
+        // Fonction pour envoyer le message de localisation (texte) à Firestore
         window.sendLocationMessageEvent = async function() {
             if (!db || !currentUserId) {
                 showMessageBox("L'application n'est pas prête ou l'utilisateur n'est pas authentifié.");
@@ -479,21 +491,20 @@
             if (message === '') return;
 
             try {
-                // Use setDoc with the user ID as document ID to store the last position
-                const locationDocRef = doc(db, `artifacts/${appId}/public/data/locations`, currentUserId);
+                const locationDocRef = doc(db, `artifacts/${appId}/public/data/locations`, currentUserId); // Utilise l'ID utilisateur comme ID de doc pour la dernière position texte
                 await setDoc(locationDocRef, {
                     userId: currentUserId,
                     message: message,
                     timestamp: Date.now(),
-                });
-                inputElement.value = ''; // Clear the field after sending
+                }, { merge: true }); // Utilise merge pour ne pas écraser les coordonnées si elles existent
+                inputElement.value = '';
             } catch (error) {
                 console.error("Erreur lors de l'envoi du message de localisation:", error);
                 showMessageBox("Erreur lors de l'envoi du message de localisation.");
             }
         }
 
-        // Function to add a new challenge (objectif) to Firestore
+        // Fonction pour ajouter un nouveau défi (objectif) à Firestore
         window.addChallengeEvent = async function() {
             if (!db || !currentUserId) {
                 showMessageBox("L'application n'est pas prête ou l'utilisateur n'est pas authentifié.");
@@ -504,7 +515,6 @@
             if (text === '') return;
 
             try {
-                // addDoc adds a new document with an automatically generated ID
                 await addDoc(collection(db, `artifacts/${appId}/public/data/challenges`), {
                     text: text,
                     completed: false,
@@ -518,7 +528,7 @@
             }
         }
 
-        // Function to toggle the "completed" status of a challenge (objectif) in Firestore
+        // Fonction pour basculer l'état "complété" d'un défi (objectif) dans Firestore
         window.toggleChallengeCompletionEvent = async function(challengeId, newStatus) {
             if (!db || !currentUserId) {
                 showMessageBox("L'application n'est pas prête ou l'utilisateur n'est pas authentifié.");
@@ -528,8 +538,8 @@
                 const challengeRef = doc(db, `artifacts/${appId}/public/data/challenges`, challengeId);
                 await updateDoc(challengeRef, {
                     completed: newStatus,
-                    completedBy: newStatus ? currentUserId : null, // Who completed it
-                    completedAt: newStatus ? Date.now() : null, // When it was completed
+                    completedBy: newStatus ? currentUserId : null,
+                    completedAt: newStatus ? Date.now() : null,
                 });
             } catch (error) {
                 console.error("Erreur lors de la mise à jour de l'objectif:", error);
@@ -537,10 +547,46 @@
             }
         }
 
-        // --- PHONE NUMBER VALIDATION AND FORMATTING ---
-        // Expose the function to the global scope for the oninput event
+        // Fonction pour envoyer un message de chat à Firestore
+        window.sendChatMessage = async function() {
+            // Vérifier si l'utilisateur a un profil enregistré (prénom) pour envoyer des messages
+            if (!currentUserId || !hasUserProfile) {
+                showMessageBox("Veuillez vous enregistrer (onglet S'enregistrer) pour pouvoir envoyer des messages.");
+                return;
+            }
+            if (!db) { // Fallback si Firebase n'est pas initialisé
+                 showMessageBox("L'application n'est pas prête.");
+                 return;
+            }
+
+            const chatInput = document.getElementById('chatMessageInput');
+            const messageText = chatInput.value.trim();
+
+            if (!messageText) {
+                return; // Ne pas envoyer de message vide
+            }
+
+            try {
+                await addDoc(collection(db, `artifacts/${appId}/public/data/chatMessages`), {
+                    userId: currentUserId,
+                    message: messageText,
+                    timestamp: Date.now(),
+                });
+                chatInput.value = ''; // Effacer le champ de saisie
+                // Faire défiler vers le bas après l'envoi
+                const chatMessagesContainer = document.getElementById('chatMessagesContainer');
+                if (chatMessagesContainer) {
+                    chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight;
+                }
+            } catch (error) {
+                console.error("Erreur lors de l'envoi du message de chat:", error);
+                showMessageBox("Erreur lors de l'envoi du message.");
+            }
+        };
+
+        // --- VALIDATION ET FORMATAGE DU NUMÉRO DE TÉLÉPHONE ---
         window.formatPhoneNumber = function(input) {
-            let value = input.value.replace(/\D/g, ''); // Remove anything that is not a digit
+            let value = input.value.replace(/\D/g, '');
             let formattedValue = '';
             for (let i = 0; i < value.length; i++) {
                 if (i > 0 && i % 2 === 0) {
@@ -549,10 +595,10 @@
                 formattedValue += value[i];
             }
             input.value = formattedValue;
-            return formattedValue; // Return the formatted value for pre-filling
+            return formattedValue;
         }
 
-        // Function to save user profile (first name, phone)
+        // Fonction pour enregistrer ou mettre à jour le profil utilisateur
         window.saveProfile = async function() {
             if (!db || !currentUserId) {
                 showMessageBox("L'application n'est pas prête ou l'utilisateur n'est pas authentifié.");
@@ -562,7 +608,7 @@
             const firstNameInput = document.getElementById('firstNameInput');
             const phoneNumberInput = document.getElementById('phoneNumberInput');
             const firstName = firstNameInput.value.trim();
-            let phoneNumber = phoneNumberInput.value.replace(/\s/g, ''); // Remove spaces for validation
+            let phoneNumber = phoneNumberInput.value.replace(/\s/g, '');
 
             if (!firstName) {
                 showMessageBox("Veuillez saisir votre prénom.");
@@ -575,71 +621,122 @@
 
             try {
                 const userProfileRef = doc(db, `artifacts/${appId}/public/data/profiles`, currentUserId);
+                
+                // Si l'utilisateur a déjà un profil et tente de s'enregistrer avec des données identiques,
+                // ou s'il y a déjà un prénom enregistré, on peut le considérer comme un doublon pour cette session anonyme.
+                if (hasUserProfile && userProfiles[currentUserId]?.firstName === firstName && userProfiles[currentUserId]?.phoneNumber === phoneNumber) {
+                    showMessageBox("Votre profil est déjà enregistré avec ces informations.");
+                    return;
+                }
+
                 await setDoc(userProfileRef, {
                     userId: currentUserId,
                     firstName: firstName,
                     phoneNumber: phoneNumber,
-                    lastOnline: Date.now() // Also update last activity
-                }, { merge: true }); // Use merge to not overwrite other fields if present
+                    lastOnline: Date.now()
+                }, { merge: true });
                 showMessageBox("Votre profil a été enregistré avec succès !");
+                
+                // Mettre à jour l'état et l'UI immédiatement
+                hasUserProfile = true;
+                updateConnectButtonState(); // Mettre à jour le texte du bouton principal
+                renderProfileTab(); // Re-rendre l'onglet pour afficher le profil
+                
             } catch (error) {
                 console.error("Erreur lors de l'enregistrement du profil:", error);
                 showMessageBox("Erreur lors de l'enregistrement de votre profil.");
             }
         }
 
-        // --- TAB RENDERING AND DISPLAY UPDATES ---
+        // Fonction pour déconnecter l'utilisateur
+        window.logout = async function() {
+            try {
+                if (auth.currentUser) {
+                    await signOut(auth); // Déconnecte l'utilisateur Firebase
+                }
+                // Réinitialiser l'état local et forcer le rechargement pour obtenir un nouvel utilisateur anonyme
+                currentUserId = null;
+                hasUserProfile = false;
+                userProfiles = {}; // Effacer les profils en cache
+                updateConnectButtonState(); // Mettre à jour le bouton
+                window.location.reload(); // Recharger la page pour un nouvel utilisateur anonyme
+            } catch (error) {
+                console.error("Erreur lors de la déconnexion:", error);
+                showMessageBox("Erreur lors de la déconnexion: " + error.message);
+            }
+        };
 
-        // Render the content of the "Accueil" tab
+        // Fonction pour mettre à jour le texte du bouton de connexion/profil
+        function updateConnectButtonState() {
+            const tabConnectButton = document.getElementById('tabConnect');
+            if (tabConnectButton) {
+                if (hasUserProfile) {
+                    tabConnectButton.textContent = "Mon Profil";
+                    // Ajouter des classes spécifiques si nécessaire pour un état "connecté"
+                    tabConnectButton.classList.remove('bg-red-700', 'hover:bg-red-800');
+                    tabConnectButton.classList.add('bg-green-700', 'hover:bg-green-800'); // Exemple de couleur différente pour "connecté"
+                } else {
+                    tabConnectButton.textContent = "S'enregistrer";
+                    // Revenir aux classes par défaut si déconnecté/non enregistré
+                    tabConnectButton.classList.remove('bg-green-700', 'hover:bg-green-800');
+                    tabConnectButton.classList.add('bg-red-700', 'hover:bg-red-800');
+                }
+            }
+        }
+
+
+        // --- RENDU DES ONGLES ET MISE À JOUR DE L'AFFICHAGE ---
+
+        // Rendu du contenu de l'onglet "Accueil"
         function renderAccueilTab() {
             document.getElementById('tabContent').innerHTML = `
-                <div class="flex flex-col items-center justify-center p-4"> <!-- Conteneur centré pour l'onglet Accueil -->
+                <div class="flex flex-col items-center justify-center p-4">
                     <h2 class="text-3xl font-semibold mb-6 text-center text-red-400">Bienvenue à Defqon 1 !</h2>
                     
-                    <div class="mb-6 mx-auto"> <!-- Centrer le compteur d'utilisateurs en ligne -->
+                    <div class="mb-6 mx-auto">
                         <span id="onlineUsersCount" class="px-3 py-1 rounded-full bg-red-500 text-white text-sm font-semibold">
                             En ligne: 0
                         </span>
                     </div>
 
                     <!-- Compte à rebours du festival -->
-                    <div id="countdownDisplay" class="countdown-box mx-auto"> <!-- Utilise mx-auto pour centrer le bloc -->
+                    <div id="countdownDisplay" class="countdown-box mx-auto">
                         <div class="countdown-text">Chargement...</div>
-                        <!-- Le label sera vide si le compte à rebours est actif -->
                         <div class="countdown-label"></div>
                     </div>
                 </div>
             `;
-            updateOnlineUsersCountDisplay(); // Update display for online users
-            startCountdown(); // Call startCountdown here to ensure it runs when tab is active
+            updateOnlineUsersCountDisplay();
+            startCountdown();
         }
 
-        // Render the content of the "Se retrouver" tab
+        // Rendu du contenu de l'onglet "Se retrouver" (sans la carte)
         function renderSeRetrouverTab() {
             document.getElementById('tabContent').innerHTML = `
                 <div>
                     <h2 class="text-3xl font-semibold mb-6 text-center text-red-400">Où nous retrouver ?</h2>
-                    <div class="flex flex-col sm:flex-row gap-3 mb-6">
+                    
+                    <div class="flex flex-col sm:flex-row gap-3 mt-6">
                         <input
                             type="text"
                             id="locationMessageInput"
-                            placeholder="Votre message de localisation (ex: 'Devant la scène rouge')"
+                            placeholder="Partagez un message de localisation (facultatif)"
                             class="input-field flex-grow"
                         />
                         <button onclick="sendLocationMessageEvent()" class="btn-primary">
-                            Envoyer
+                            Envoyer message
                         </button>
                     </div>
-                    <div id="sharedLocationsList" class="scrollable-content">
-                        <!-- Les messages seront injectés ici -->
+                    <div id="sharedLocationsList" class="scrollable-content mt-4">
+                        <!-- Les messages de localisation textuels seront injectés ici -->
                     </div>
                 </div>
             `;
-            updateLocationMessagesDisplay(); // Update initial display
+            updateLocationMessagesDisplay(); // Mettre à jour l'affichage des messages textuels
         }
 
-        // Mettre à jour l'affichage des messages de localisation
-        function updateLocationMessagesDisplay() {
+        // Mettre à jour l'affichage des messages de localisation (texte)
+        window.updateLocationMessagesDisplay = function() { 
             const listElement = document.getElementById('sharedLocationsList');
             if (!listElement) return;
 
@@ -665,7 +762,7 @@
             }
         }
 
-        // Rendu du contenu de l'onglet "Objectifs" (anciennement "Défis")
+        // Rendu du contenu de l'onglet "Objectifs"
         function renderObjectifsTab() {
             document.getElementById('tabContent').innerHTML = `
                 <div>
@@ -689,8 +786,8 @@
                     </div>
                 </div>
             `;
-            updateChallengesDisplay(); // Mettre à jour l'affichage initial des objectifs
-            updateChallengeGauges(); // Initialiser les jauges des objectifs
+            updateChallengesDisplay();
+            updateChallengeGauges();
         }
 
         // Mettre à jour l'affichage des défis (maintenant objectifs)
@@ -745,7 +842,7 @@
                 return a.firstName.localeCompare(b.firstName);
             }).slice(0, 2); // Limiter à 2 utilisateurs pour les jauges
 
-            // Pour les jauges circulaires
+            // For circular gauges
             const radius = 45; // Rayon du cercle
             const circumference = 2 * Math.PI * radius; // Circonférence du cercle
 
@@ -777,43 +874,72 @@
             });
         }
 
-        // Rendu du contenu de l'onglet "Se connecter"
-        function renderConnectTab() {
-            document.getElementById('tabContent').innerHTML = `
-                <div>
-                    <h2 class="text-3xl font-semibold mb-6 text-center text-red-400">Mon Profil</h2>
-                    <p class="text-center text-gray-400 mb-4">
-                        Enregistrez votre prénom et numéro de téléphone pour que vos amis vous reconnaissent.
-                    </p>
-                    <div class="flex flex-col gap-4 mb-6">
-                        <input
-                            type="text"
-                            id="firstNameInput"
-                            placeholder="Votre prénom"
-                            class="input-field"
-                        />
-                        <input
-                            type="tel"
-                            id="phoneNumberInput"
-                            placeholder="Votre numéro de téléphone"
-                            class="input-field"
-                            oninput="formatPhoneNumber(this)"
-                            maxlength="14" />
-                        <button onclick="saveProfile()" class="btn-primary">
-                            Enregistrer le profil
-                        </button>
+        // Rendu du contenu de l'onglet "S'enregistrer / Mon Profil"
+        function renderProfileTab() {
+            const tabContentElement = document.getElementById('tabContent');
+            if (!tabContentElement) return;
+
+            if (hasUserProfile && userProfiles[currentUserId]) {
+                const userProfile = userProfiles[currentUserId];
+                tabContentElement.innerHTML = `
+                    <div>
+                        <h2 class="text-3xl font-semibold mb-6 text-center text-red-400">Mon Profil</h2>
+                        <p class="text-center text-gray-400 mb-4">
+                            Gérez vos informations de profil.
+                        </p>
+                        <div class="flex flex-col gap-4 mb-6 p-4 bg-gray-800 rounded-lg shadow-md">
+                            <p class="text-lg"><span class="font-bold">Prénom:</span> ${escapeHTML(userProfile.firstName || 'Non renseigné')}</p>
+                            <p class="text-lg"><span class="font-bold">Téléphone:</span> ${escapeHTML(window.formatPhoneNumber({ value: userProfile.phoneNumber || '' })) || 'Non renseigné'}</p>
+                            <div class="text-center text-gray-500 mt-2 text-sm">
+                                Votre ID unique: <span class="font-mono bg-gray-700 rounded px-2 py-1">${currentUserId ? currentUserId : 'Chargement...'}</span>
+                            </div>
+                        </div>
+                        <div class="flex flex-col gap-4 mt-6">
+                            <button onclick="setActiveTab('accueil')" class="btn-primary bg-gray-600 hover:bg-gray-700">
+                                Retour à l'Accueil
+                            </button>
+                            <button onclick="logout()" class="btn-primary bg-red-800 hover:bg-red-900">
+                                Se déconnecter
+                            </button>
+                        </div>
                     </div>
-                    <div class="text-center text-gray-500 mt-6 text-sm">
-                        Votre ID unique: <span class="font-mono bg-gray-700 rounded px-2 py-1">${currentUserId ? currentUserId : 'Chargement...'}</span>
+                `;
+            } else {
+                tabContentElement.innerHTML = `
+                    <div>
+                        <h2 class="text-3xl font-semibold mb-6 text-center text-red-400">S'enregistrer</h2>
+                        <p class="text-center text-gray-400 mb-4">
+                            Enregistrez votre prénom et numéro de téléphone pour pouvoir utiliser toutes les fonctionnalités (chat, etc.).
+                        </p>
+                        <div class="flex flex-col gap-4 mb-6">
+                            <input
+                                type="text"
+                                id="firstNameInput"
+                                placeholder="Votre prénom"
+                                class="input-field"
+                            />
+                            <input
+                                type="tel"
+                                id="phoneNumberInput"
+                                placeholder="Votre numéro de téléphone (10 chiffres)"
+                                class="input-field"
+                                oninput="formatPhoneNumber(this)"
+                                maxlength="14" />
+                            <button onclick="saveProfile()" class="btn-primary">
+                                Enregistrer le profil
+                            </button>
+                        </div>
+                        <div class="text-center text-gray-500 mt-6 text-sm">
+                            Votre ID unique: <span class="font-mono bg-gray-700 rounded px-2 py-1">${currentUserId ? currentUserId : 'Chargement...'}</span>
+                        </div>
                     </div>
-                </div>
-            `;
-            // Pre-fill fields if profile already exists
-            if (currentUserId && userProfiles[currentUserId]) {
-                document.getElementById('firstNameInput').value = userProfiles[currentUserId].firstName || '';
-                // Format the phone number when pre-filling
-                const rawPhoneNumber = userProfiles[currentUserId].phoneNumber || '';
-                document.getElementById('phoneNumberInput').value = window.formatPhoneNumber({ value: rawPhoneNumber });
+                `;
+                // Pré-remplir les champs si le profil existe déjà mais n'est pas "complet"
+                if (currentUserId && userProfiles[currentUserId]) {
+                    document.getElementById('firstNameInput').value = userProfiles[currentUserId].firstName || '';
+                    const rawPhoneNumber = userProfiles[currentUserId].phoneNumber || '';
+                    document.getElementById('phoneNumberInput').value = window.formatPhoneNumber({ value: rawPhoneNumber });
+                }
             }
         }
 
@@ -889,8 +1015,7 @@
             }
         };
 
-
-        // Update the display of the online users count
+        // Mettre à jour l'affichage du compteur d'utilisateurs en ligne
         function updateOnlineUsersCountDisplay() {
             const displayElement = document.getElementById('onlineUsersCount');
             if (displayElement) {
@@ -979,13 +1104,12 @@
                 button.classList.remove('active');
                 button.classList.remove('scale-105');
             });
-            // Pour le bouton Se connecter (séparé)
+            // Gérer séparément les boutons "Se connecter/Mon Profil" et "NoisyNeighbors"
             const tabConnectButton = document.getElementById('tabConnect');
             if (tabConnectButton) {
                 tabConnectButton.classList.remove('active');
                 tabConnectButton.classList.remove('scale-105');
             }
-            // Pour le nouveau bouton NoisyNeighbors (séparé aussi)
             const tabNoisyNeighborsButton = document.getElementById('tabNoisyNeighbors');
             if (tabNoisyNeighborsButton) {
                 tabNoisyNeighborsButton.classList.remove('active');
@@ -1012,24 +1136,24 @@
                 case 'seRetrouver':
                     renderSeRetrouverTab();
                     break;
-                case 'objectifs': // Ancien 'defis'
+                case 'objectifs':
                     renderObjectifsTab();
                     break;
+                case 'tchat':
+                    renderTchatTab();
+                    break;
                 case 'connect':
-                    renderConnectTab();
+                    renderProfileTab(); // Appel à la nouvelle fonction pour la gestion du profil/enregistrement
                     break;
                 case 'noisyNeighbors':
                     renderNoisyNeighborsTab();
                     break;
                 default:
-                    renderAccueilTab(); // Revenir à l'onglet par défaut si un onglet invalide est demandé
+                    renderAccueilTab();
             }
         }
 
         // --- APPLICATION INITIALIZATION (après chargement du DOM) ---
-        // Le `DOMContentLoaded` est maintenant géré dans `onAuthStateChanged` pour s'assurer
-        // que l'authentification Firebase est prête avant de rendre le contenu initial.
-        // Assurez-vous d'arrêter le compte à rebours lorsque la page est déchargée
         window.addEventListener('beforeunload', () => {
             if (countdownInterval) {
                 clearInterval(countdownInterval);
