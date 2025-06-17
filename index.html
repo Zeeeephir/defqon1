@@ -239,7 +239,6 @@
         <button id="tabConnect" class="px-4 py-2 rounded-md bg-red-700 text-white font-semibold transition-all shadow-lg hover:bg-red-800 hover:scale-105 active:scale-95 transform">
             S'enregistrer
         </button>
-        <!-- Le bouton "NoisyNeighbors" est supprimé -->
     </div>
 
     <!-- Contenu des onglets -->
@@ -461,7 +460,7 @@
             return formattedValue;
         }
 
-        // Fonction pour enregistrer un nouveau profil (associé à l'ID Firebase anonyme actuel)
+        // Fonction pour enregistrer un nouveau profil (ou mettre à jour/associer un existant)
         window.registerUser = async function() {
             if (!db || !currentUserId) {
                 showMessageBox("L'application n'est pas prête ou l'utilisateur n'est pas authentifié.");
@@ -484,22 +483,41 @@
             }
 
             try {
-                const userProfileRef = doc(db, `artifacts/${appId}/public/data/profiles`, currentUserId);
-                
-                await setDoc(userProfileRef, {
-                    userId: currentUserId, // L'ID Firebase anonyme
-                    firstName: firstName,
-                    phoneNumber: phoneNumber,
-                    lastOnline: Date.now()
-                }, { merge: true });
+                const profilesRef = collection(db, `artifacts/${appId}/public/data/profiles`);
+                const q = query(profilesRef,
+                    where("firstName", "==", firstName),
+                    where("phoneNumber", "==", phoneNumber)
+                );
+                const querySnapshot = await getDocs(q);
 
-                showMessageBox("Profil enregistré avec succès !");
+                let profileDocRef;
+                if (!querySnapshot.empty) {
+                    // Profil existant trouvé: Associer la session actuelle à ce profil
+                    profileDocRef = querySnapshot.docs[0].ref;
+                    await updateDoc(profileDocRef, {
+                        userId: currentUserId, // Associe l'ID Firebase anonyme actuel au profil existant
+                        lastOnline: Date.now()
+                    });
+                    showMessageBox("Profil existant trouvé et connecté avec succès !");
+                } else {
+                    // Aucun profil existant: Créer un nouveau profil
+                    profileDocRef = doc(db, `artifacts/${appId}/public/data/profiles`, currentUserId); // Utilise l'ID anonyme actuel comme ID de document
+                    await setDoc(profileDocRef, {
+                        userId: currentUserId,
+                        firstName: firstName,
+                        phoneNumber: phoneNumber,
+                        lastOnline: Date.now()
+                    });
+                    showMessageBox("Nouveau profil enregistré avec succès !");
+                }
+                
                 hasUserProfile = true; // Indique que l'utilisateur actuel a un profil
                 updateConnectButtonState();
                 renderProfileTab(); // Passe à la vue "Mon Profil"
+
             } catch (error) {
-                console.error("Erreur lors de l'enregistrement du profil:", error);
-                showMessageBox("Erreur lors de l'enregistrement de votre profil. " + error.message);
+                console.error("Erreur lors de l'enregistrement ou de la connexion au profil:", error);
+                showMessageBox("Erreur lors de l'enregistrement ou de la connexion au profil. " + error.message);
             }
         };
 
@@ -536,19 +554,17 @@
                 if (!querySnapshot.empty) {
                     profileFound = true;
                     matchingProfileData = querySnapshot.docs[0].data(); // Prend le premier profil trouvé
+                    
+                    // Mise à jour de l'ID Firebase anonyme du profil trouvé avec l'ID actuel
+                    // pour garantir que cette session est bien associée à ce profil.
+                    const existingProfileDocRef = querySnapshot.docs[0].ref;
+                    await updateDoc(existingProfileDocRef, {
+                        userId: currentUserId,
+                        lastOnline: Date.now()
+                    });
                 }
 
                 if (profileFound && matchingProfileData) {
-                    // Si un profil correspond, met à jour le profil de l'utilisateur anonyme actuel.
-                    // Cela "associe" la session anonyme actuelle aux données du profil trouvé.
-                    const userProfileRef = doc(db, `artifacts/${appId}/public/data/profiles`, currentUserId);
-                    await setDoc(userProfileRef, {
-                        firstName: matchingProfileData.firstName,
-                        phoneNumber: matchingProfileData.phoneNumber,
-                        lastOnline: Date.now(),
-                    }, { merge: true });
-
-
                     showMessageBox("Connexion réussie !");
                     hasUserProfile = true; // Indique que l'utilisateur actuel a un profil
                     updateConnectButtonState();
@@ -858,8 +874,13 @@
             const tabContentElement = document.getElementById('tabContent');
             if (!tabContentElement) return;
 
-            if (hasUserProfile && userProfiles[currentUserId] && userProfiles[currentUserId].firstName) {
-                const userProfile = userProfiles[currentUserId];
+            // Récupère le profil de l'utilisateur courant pour déterminer l'affichage
+            const currentUserProfile = userProfiles[currentUserId];
+
+            if (hasUserProfile && currentUserProfile && currentUserProfile.firstName) {
+                const userProfile = currentUserProfile;
+                const isAdmin = userProfile.role === 'ADMIN';
+
                 tabContentElement.innerHTML = `
                     <div>
                         <h2 class="text-3xl font-semibold mb-6 text-center text-red-400">Mon Profil</h2>
@@ -869,6 +890,7 @@
                         <div class="flex flex-col gap-4 mb-6 p-4 bg-gray-800 rounded-lg shadow-md">
                             <p class="text-lg"><span class="font-bold">Prénom:</span> ${escapeHTML(userProfile.firstName || 'Non renseigné')}</p>
                             <p class="text-lg"><span class="font-bold">Téléphone:</span> ${escapeHTML(window.formatPhoneNumber({ value: userProfile.phoneNumber || '' })) || 'Non renseigné'}</p>
+                            ${userProfile.role ? `<p class="text-lg"><span class="font-bold">Rôle:</span> ${escapeHTML(userProfile.role)}</p>` : ''}
                             <div class="text-center text-gray-500 mt-2 text-sm">
                                 Votre ID unique: <span class="font-mono bg-gray-700 rounded px-2 py-1">${currentUserId ? currentUserId : 'Chargement...'}</span>
                             </div>
@@ -877,14 +899,35 @@
                             <button onclick="setActiveTab('accueil')" class="btn-primary bg-gray-600 hover:bg-gray-700">
                                 Retour à l'Accueil
                             </button>
+                            ${!isAdmin ? `
+                                <button id="showAdminCodeInput" class="btn-primary bg-purple-700 hover:bg-purple-800">
+                                    Promouvoir Admin
+                                </button>
+                                <div id="adminCodeSection" class="hidden flex flex-col gap-2">
+                                    <input type="password" id="adminCodeInput" placeholder="Code admin" class="input-field">
+                                    <button onclick="promoteToAdmin()" class="btn-primary bg-purple-900 hover:bg-purple-950">
+                                        Valider Code
+                                    </button>
+                                </div>
+                            ` : ''}
                             <button onclick="logout()" class="btn-primary bg-red-800 hover:bg-red-900">
                                 Se déconnecter
                             </button>
                         </div>
                     </div>
                 `;
+                // Attacher l'écouteur pour le bouton "Promouvoir Admin" s'il existe
+                if (!isAdmin) {
+                    const showAdminCodeBtn = document.getElementById('showAdminCodeInput');
+                    const adminCodeSection = document.getElementById('adminCodeSection');
+                    if (showAdminCodeBtn && adminCodeSection) {
+                        showAdminCodeBtn.addEventListener('click', () => {
+                            adminCodeSection.classList.toggle('hidden');
+                        });
+                    }
+                }
             } else {
-                // Si l'utilisateur n'a pas de profil enregistré, affiche les formulaires d'inscription/connexion
+                // Si l'utilisateur n'a pas de profil enregistré (ou profil incomplet), affiche les formulaires d'inscription/connexion
                 tabContentElement.innerHTML = `
                     <div class="flex flex-col items-center justify-center p-4">
                         <h2 class="text-3xl font-semibold mb-6 text-center text-red-400">Accès au Compte</h2>
@@ -1113,6 +1156,66 @@
             }
         }
 
+        // --- NOUVELLE FONCTION POUR ASSIGNER LE RÔLE ADMIN ---
+        async function assignAdminRole(targetUserId, newRole) {
+            if (!db) {
+                console.error("Firestore n'est pas initialisé. Impossible d'assigner le rôle.");
+                showMessageBox("Erreur : Firestore non initialisé pour l'assignation du rôle.");
+                return;
+            }
+
+            try {
+                // Utilise l'ID Firebase anonyme actuel pour trouver et mettre à jour le profil
+                const profileDocRef = doc(db, `artifacts/${appId}/public/data/profiles`, targetUserId);
+                const profileSnap = await getDoc(profileDocRef);
+
+                if (profileSnap.exists()) {
+                    await updateDoc(profileDocRef, {
+                        role: newRole,
+                        roleAssignedAt: Date.now() // Ajout d'un timestamp pour le suivi
+                    });
+                    console.log(`Rôle '${newRole}' assigné à l'utilisateur (ID: ${targetUserId}) avec succès.`);
+                    showMessageBox(`Le rôle '${newRole}' a été assigné à votre profil !`);
+                    
+                    // Force la mise à jour des profils pour que l'interface réagisse
+                    // (onAuthStateChanged va redéclencher, mais cela assure une mise à jour rapide de l'UI)
+                    const profilesColRef = collection(db, `artifacts/${appId}/public/data/profiles`);
+                    const snapshot = await getDocs(profilesColRef); // Re-fetch all profiles
+                    const fetchedProfiles = {};
+                    snapshot.forEach(d => { fetchedProfiles[d.id] = d.data(); });
+                    userProfiles = fetchedProfiles; // Update global cache
+                    hasUserProfile = userProfiles[currentUserId] && userProfiles[currentUserId].firstName;
+                    updateConnectButtonState(); // Update main button
+                    renderProfileTab(); // Re-render the profile tab
+                } else {
+                    console.warn(`Aucun profil trouvé pour l'ID utilisateur actuel (${targetUserId}).`);
+                    showMessageBox(`Impossible de trouver votre profil pour assigner le rôle. Veuillez vous assurer d'être enregistré.`);
+                }
+            } catch (error) {
+                console.error("Erreur lors de l'assignation du rôle ADMIN:", error);
+                showMessageBox("Erreur lors de l'assignation du rôle ADMIN: " + error.message);
+            }
+        }
+
+        // Fonction pour promouvoir l'utilisateur au rang d'admin via le code
+        window.promoteToAdmin = async function() {
+            const adminCodeInput = document.getElementById('adminCodeInput');
+            const code = adminCodeInput.value.trim();
+            const CORRECT_ADMIN_CODE = "2507"; // Le code secret
+
+            if (code === CORRECT_ADMIN_CODE) {
+                if (currentUserId) {
+                    await assignAdminRole(currentUserId, "ADMIN");
+                } else {
+                    showMessageBox("Aucun utilisateur connecté pour attribuer le rôle d'administrateur.");
+                }
+            } else {
+                showMessageBox("Code admin incorrect.");
+            }
+            adminCodeInput.value = ''; // Efface le champ après tentative
+        };
+
+
         // --- APPLICATION INITIALIZATION (après chargement du DOM et de toutes les ressources) ---
         window.onload = () => { // Utiliser window.onload pour garantir que tous les scripts sont chargés
             // --- FIREBASE INITIALIZATION AND AUTHENTICATION ---
@@ -1224,17 +1327,13 @@
                         } else {
                             console.log("Aucun utilisateur authentifié. Tentative de connexion...");
                             try {
-                                if (initialAuthToken) {
-                                    await signInAnonymously(auth); // Fallback to anonymous if token is not valid
-                                    console.log("Connected anonymously as custom token is not valid.");
-                                } else {
-                                    await signInAnonymously(auth);
-                                    console.log("Connected anonymously as no initial token.");
-                                }
+                                // Tente de se connecter anonymement si aucun jeton initial n'est fourni ou n'est pas valide
+                                await signInAnonymously(auth);
+                                console.log("Connecté anonymement.");
                             } catch (signInError) {
                                 console.error("Erreur de connexion anonyme :", signInError);
                                 showMessageBox("Impossible de se connecter au service d'authentification. Certaines fonctionnalités peuvent être limitées.");
-                                currentUserId = generateUUID(); // Fallback local ID if auth fails
+                                currentUserId = generateUUID(); // ID de fallback local si l'auth échoue
                             }
                             hasUserProfile = false;
                         }
@@ -1242,10 +1341,10 @@
                         isAuthReady = true;
                         updateConnectButtonState();
                         if (db && auth && currentUserId) {
-                            // Call setupFirestoreListeners here, after it's defined
+                            // Appel setupFirestoreListeners ici, après sa définition
                             setupFirestoreListeners();
                         } else {
-                            console.warn("Firestore listeners non configurés car l'authentification a échoué ou l'ID utilisateur est manquant.");
+                            console.warn("Les écouteurs Firestore ne sont pas configurés car l'authentification a échoué ou l'ID utilisateur est manquant.");
                         }
                         window.setActiveTab('accueil');
                     });
